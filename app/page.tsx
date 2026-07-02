@@ -77,8 +77,8 @@ export default function HomePage() {
         return;
       }
       await Promise.all([
-        fetchLatestBlocks(8).then((b) => !cancelled && setBlocks(b)).catch(() => undefined),
-        fetchTxs("tx.height>0", 10).then((t) => !cancelled && setTxs(t)).catch(() => !cancelled && setTxs([])),
+        fetchLatestBlocks(15).then((b) => !cancelled && setBlocks(b)).catch(() => undefined),
+        fetchTxs("tx.height>0", 15).then((t) => !cancelled && setTxs(t)).catch(() => !cancelled && setTxs([])),
         fetchValidators().then((v) => !cancelled && setValidatorCount(v.length)).catch(() => undefined),
         fetchSupply().then((v) => !cancelled && setSupply(v)).catch(() => undefined),
         fetchBondedTokens().then((v) => !cancelled && setBonded(v)).catch(() => undefined),

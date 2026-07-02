@@ -24,17 +24,44 @@ export interface BlockSummary {
   rawTxs: string[];
 }
 
+export interface TxEvent {
+  type: string;
+  attributes: Array<{ key: string; value: string; msgIndex?: string }>;
+}
+
+export interface PqcExtension {
+  typeUrl: string;
+  algorithmId: number | string;
+  /** base64 length → raw signature size in bytes */
+  signatureBytes: number;
+}
+
+export interface SignerInfo {
+  pubkeyType: string;
+  pubkeyB64: string;
+  mode: string;
+  sequence: string;
+}
+
 export interface TxSummary {
   hash: string;
   height: string;
   time: string;
   code: number;
+  rawLog: string;
   messages: Array<{ type: string }>;
+  /** Full LCD message objects (typed rendering + generic fallback). */
+  messagesFull: Array<Record<string, unknown>>;
   gasUsed: string;
   gasWanted: string;
   fee: string;
+  feeAmounts: Array<{ denom: string; amount: string }>;
   memo: string;
+  timeoutHeight: string;
   hasPqcExtension: boolean;
+  pqcExtensions: PqcExtension[];
+  signers: SignerInfo[];
+  events: TxEvent[];
   raw: unknown;
 }
 
@@ -97,39 +124,79 @@ export async function fetchLatestBlocks(count = 10): Promise<BlockSummary[]> {
 interface LcdTxResponse {
   tx: {
     body: {
-      messages: Array<{ "@type": string }>;
+      messages: Array<Record<string, unknown> & { "@type": string }>;
       memo: string;
-      extension_options?: Array<{ "@type": string }>;
+      timeout_height?: string;
+      extension_options?: Array<
+        Record<string, unknown> & { "@type": string }
+      >;
     };
-    auth_info: { fee: { amount: Array<{ denom: string; amount: string }> } };
+    auth_info: {
+      signer_infos?: Array<{
+        public_key?: { "@type": string; key?: string };
+        mode_info?: { single?: { mode: string } };
+        sequence?: string;
+      }>;
+      fee: { amount: Array<{ denom: string; amount: string }> };
+    };
   };
   tx_response: {
     txhash: string;
     height: string;
     timestamp: string;
     code: number;
+    raw_log?: string;
     gas_used: string;
     gas_wanted: string;
+    events?: Array<{
+      type: string;
+      attributes: Array<{ key: string; value: string }>;
+    }>;
   };
 }
 
 function toTxSummary(r: LcdTxResponse): TxSummary {
-  const feeAmount =
-    r.tx.auth_info.fee.amount?.map((a) => `${a.amount}${a.denom}`).join(", ") ||
-    "0uqor";
+  const feeAmounts = r.tx.auth_info.fee.amount ?? [];
+  const extensions = (r.tx.body.extension_options ?? []).map((e) => ({
+    typeUrl: e["@type"],
+    algorithmId: (e.algorithm_id as number | string) ?? "unknown",
+    signatureBytes: Math.floor(
+      (String(e.pqc_signature ?? "").length * 3) / 4,
+    ),
+  }));
+  const events: TxEvent[] = (r.tx_response.events ?? []).map((e) => {
+    const attributes = e.attributes.map((a) => ({ key: a.key, value: a.value }));
+    const msgIndex = attributes.find((a) => a.key === "msg_index")?.value;
+    return {
+      type: e.type,
+      attributes: attributes.map((a) => ({ ...a, msgIndex })),
+    };
+  });
   return {
     hash: r.tx_response.txhash,
     height: r.tx_response.height,
     time: r.tx_response.timestamp,
     code: r.tx_response.code,
+    rawLog: r.tx_response.raw_log ?? "",
     messages: (r.tx.body.messages ?? []).map((m) => ({
       type: m["@type"].split(".").pop() ?? m["@type"],
     })),
+    messagesFull: r.tx.body.messages ?? [],
     gasUsed: r.tx_response.gas_used,
     gasWanted: r.tx_response.gas_wanted,
-    fee: feeAmount,
+    fee: feeAmounts.map((a) => `${a.amount}${a.denom}`).join(", ") || "0uqor",
+    feeAmounts,
     memo: r.tx.body.memo ?? "",
-    hasPqcExtension: Boolean(r.tx.body.extension_options?.length),
+    timeoutHeight: r.tx.body.timeout_height ?? "0",
+    hasPqcExtension: extensions.length > 0,
+    pqcExtensions: extensions,
+    signers: (r.tx.auth_info.signer_infos ?? []).map((s) => ({
+      pubkeyType: s.public_key?.["@type"] ?? "unknown",
+      pubkeyB64: s.public_key?.key ?? "",
+      mode: s.mode_info?.single?.mode ?? "unknown",
+      sequence: s.sequence ?? "0",
+    })),
+    events,
     raw: r,
   };
 }

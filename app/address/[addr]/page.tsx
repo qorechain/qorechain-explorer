@@ -23,7 +23,7 @@ import {
 import { CARD, CopyValue, ErrorBanner, FactRow, Spinner } from "@/components/ui";
 
 interface Balances {
-  uqor: string;
+  uqor: string | null;
   wei: string | null;
   lamports: string | null;
 }
@@ -57,7 +57,8 @@ export default function AddressPage({
 
       const load = async () => {
         const [uqor, acc, wei, lamports, list] = await Promise.all([
-          fetchBankBalance(qor).catch(() => "0"),
+          // null (not "0") when the LCD is unreachable — zeros would lie.
+          fetchBankBalance(qor).catch(() => null),
           fetchAccountInfo(qor),
           evmCall<string>("eth_getBalance", [evmAddressFromBech32(qor), "latest"])
             .then((h) => BigInt(h).toString())
@@ -94,6 +95,7 @@ export default function AddressPage({
   const svmAddr = qorAddress ? svmAddressFromBech32(qorAddress) : null;
   const parity =
     balances?.lamports != null &&
+    balances?.uqor != null &&
     BigInt(balances.lamports) ===
       BigInt(balances.uqor) * BigInt(network.data.currency.svm.lamportsPerUqor);
 
@@ -138,7 +140,9 @@ export default function AddressPage({
             </div>
             <FactRow label={`Cosmos (${network.data.currency.cosmos.denom}, 6 dec)`}>
               <span className="font-mono text-slate-700 dark:text-slate-300">
-                {formatQor(balances.uqor, 6)} QOR
+                {balances.uqor != null
+                  ? `${formatQor(balances.uqor, 6)} QOR`
+                  : "endpoint unavailable"}
               </span>
             </FactRow>
             <FactRow label="EVM (wei, 18 dec)">
@@ -151,7 +155,7 @@ export default function AddressPage({
                 {balances.lamports != null ? balances.lamports : "endpoint unavailable"}
               </span>
             </FactRow>
-            {balances.lamports != null && (
+            {balances.lamports != null && balances.uqor != null && (
               <div
                 className={`mt-3 flex items-center gap-2 rounded-lg p-3 text-xs ${
                   parity

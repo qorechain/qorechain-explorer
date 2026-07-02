@@ -69,7 +69,13 @@ export default function HomePage() {
       );
       if (cancelled) return;
       setStatus(s);
-      if (!s.ok) return;
+      if (!s.ok) {
+        // Endpoints down: resolve the lists to an honest empty state instead
+        // of leaving them on a spinner forever.
+        setBlocks([]);
+        setTxs([]);
+        return;
+      }
       await Promise.all([
         fetchLatestBlocks(8).then((b) => !cancelled && setBlocks(b)).catch(() => undefined),
         fetchTxs("tx.height>0", 10).then((t) => !cancelled && setTxs(t)).catch(() => !cancelled && setTxs([])),
@@ -144,6 +150,12 @@ export default function HomePage() {
           </div>
           {blocks === null ? (
             <Spinner />
+          ) : blocks.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-400">
+              {status && !status.ok
+                ? "Unavailable — the network endpoints are not responding."
+                : "No blocks yet."}
+            </p>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-[#1a1f2e]">
               {blocks.map((b) => (
@@ -175,7 +187,9 @@ export default function HomePage() {
             <Spinner />
           ) : txs.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-400">
-              No indexed transactions yet on this network.
+              {status && !status.ok
+                ? "Unavailable — the network endpoints are not responding."
+                : "No indexed transactions yet on this network."}
             </p>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-[#1a1f2e]">

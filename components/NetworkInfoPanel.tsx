@@ -18,7 +18,7 @@ export function NetworkInfoPanel() {
     { label: "Consensus RPC", value: network.rpc },
     { label: "REST / LCD", value: network.rest },
     { label: "EVM JSON-RPC", value: network.evmRpc },
-    { label: "SVM JSON-RPC (read-only)", value: network.svmRpc },
+    { label: "SVM JSON-RPC", value: network.svmRpc },
     { label: "WebSocket", value: network.ws },
     { label: "EVM WebSocket", value: network.evmWs },
   ];

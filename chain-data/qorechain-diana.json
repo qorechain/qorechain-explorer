@@ -1,0 +1,44 @@
+{
+  "$comment": "QoreChain testnet chain facts — source of truth for the explorer and wallet configs. Endpoints ride the testnet edge on the qore.host apex. Keep in sync with the dashboard repo's chain-data/.",
+  "networkId": "testnet",
+  "chainName": "QoreChain Testnet",
+  "chainId": { "cosmos": "qorechain-diana", "evm": 9800, "evmHex": "0x2648" },
+  "bech32": {
+    "account": "qor",
+    "accountPub": "qorpub",
+    "validator": "qorvaloper",
+    "validatorPub": "qorvaloperpub",
+    "consensus": "qorvalcons",
+    "consensusPub": "qorvalconspub"
+  },
+  "slip44": 118,
+  "keyAlgo": "secp256k1",
+  "signing": "hybrid post-quantum (ML-DSA-87 + secp256k1)",
+  "unifiedIdentity": "One 20-byte account across VMs: bech32(qor1…) bytes == EVM 0x address; SVM address = same 20 bytes right-padded to 32, base58. One bank balance read by every VM.",
+  "currency": {
+    "display": "QOR",
+    "cosmos": { "denom": "uqor", "decimals": 6 },
+    "evm": { "name": "QoreChain", "symbol": "QOR", "decimals": 18, "weiPerUqor": "1000000000000" },
+    "svm": { "decimals": 9, "lamportsPerUqor": 1000 }
+  },
+  "fees": {
+    "minGasPrice": "0.1uqor",
+    "gasPriceStep": { "low": 0.1, "average": 0.15, "high": 0.25 }
+  },
+  "endpoints": {
+    "rpc": "https://rpc-testnet.qore.host",
+    "rest": "https://api-testnet.qore.host",
+    "evmRpc": "https://evm-testnet.qore.host",
+    "svmRpc": "https://svm-testnet.qore.host",
+    "ws": "wss://rpc-testnet.qore.host/websocket",
+    "evmWs": "wss://evm-ws-testnet.qore.host"
+  },
+  "assets": {
+    "logo": "https://www.qorechain.io/assets/logo.png",
+    "icon": "https://www.qorechain.io/assets/icon.png"
+  },
+  "features": ["cosmwasm"],
+  "walletconnect": {
+    "namespaces": { "eip155": "eip155:9800", "cosmos": "cosmos:qorechain-diana" }
+  }
+}

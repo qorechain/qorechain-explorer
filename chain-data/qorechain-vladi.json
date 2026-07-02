@@ -1,0 +1,44 @@
+{
+  "$comment": "QoreChain mainnet chain facts — source of truth for the explorer and wallet configs. Verified against the live chain 2026-07-02. Keep in sync with the dashboard repo's chain-data/.",
+  "networkId": "mainnet",
+  "chainName": "QoreChain",
+  "chainId": { "cosmos": "qorechain-vladi", "evm": 9801, "evmHex": "0x2649" },
+  "bech32": {
+    "account": "qor",
+    "accountPub": "qorpub",
+    "validator": "qorvaloper",
+    "validatorPub": "qorvaloperpub",
+    "consensus": "qorvalcons",
+    "consensusPub": "qorvalconspub"
+  },
+  "slip44": 118,
+  "keyAlgo": "secp256k1",
+  "signing": "hybrid post-quantum (ML-DSA-87 + secp256k1), enforced by default",
+  "unifiedIdentity": "One 20-byte account across VMs: bech32(qor1…) bytes == EVM 0x address; SVM address = same 20 bytes right-padded to 32, base58. One bank balance read by every VM.",
+  "currency": {
+    "display": "QOR",
+    "cosmos": { "denom": "uqor", "decimals": 6 },
+    "evm": { "name": "QoreChain", "symbol": "QOR", "decimals": 18, "weiPerUqor": "1000000000000" },
+    "svm": { "decimals": 9, "lamportsPerUqor": 1000 }
+  },
+  "fees": {
+    "minGasPrice": "0.1uqor",
+    "gasPriceStep": { "low": 0.1, "average": 0.15, "high": 0.25 }
+  },
+  "endpoints": {
+    "rpc": "https://rpc.qore.host",
+    "rest": "https://api.qore.host",
+    "evmRpc": "https://evm.qore.host",
+    "svmRpc": "https://svm.qore.host",
+    "ws": "wss://rpc.qore.host/websocket",
+    "evmWs": null
+  },
+  "assets": {
+    "logo": "https://www.qorechain.io/assets/logo.png",
+    "icon": "https://www.qorechain.io/assets/icon.png"
+  },
+  "features": ["cosmwasm"],
+  "walletconnect": {
+    "namespaces": { "eip155": "eip155:9801", "cosmos": "cosmos:qorechain-vladi" }
+  }
+}

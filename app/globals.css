@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* Dark mode via .dark class on <html> (next-themes attribute="class") — the
+   dashboard's convention. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased dark:bg-[#121320] dark:text-slate-200;
+}
+
+/* Dashboard palette reference:
+   page bg      #121320
+   card bg      #171925
+   card border  #1a1f2e
+   input bg     #0f1620  */

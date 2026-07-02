@@ -1,0 +1,35 @@
+{
+  "name": "qorechain-explorer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "QoreChain public block explorer — chain data straight from the network, for qorechain-vladi (mainnet) and qorechain-diana (testnet).",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@cosmjs/encoding": "^0.32.4",
+    "@qorechain/wallet-adapter": "^0.1.2",
+    "@walletconnect/sign-client": "^2.23.10",
+    "lucide-react": "^0.460.0",
+    "next": "^16.1.1",
+    "next-themes": "^0.4.4",
+    "qrcode": "^1.5.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@walletconnect/types": "^2.23.10",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

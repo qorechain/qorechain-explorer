@@ -32,7 +32,14 @@ export async function GET(
       signal: AbortSignal.timeout(15000),
     });
     const body = await res.json();
-    return NextResponse.json(body, { status: res.status });
+    const out = NextResponse.json(body, { status: res.status });
+    // Defense-in-depth against edge caching: this response is network-specific
+    // (chosen by the `qore-network` cookie), so it must never be cached under a
+    // cookie-agnostic key. Belt-and-braces with customHttp.yml.
+    out.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    out.headers.set("CDN-Cache-Control", "no-store");
+    out.headers.set("Vary", "Cookie");
+    return out;
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "upstream error" },

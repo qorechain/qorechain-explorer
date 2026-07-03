@@ -1,0 +1,17 @@
+customHeaders:
+  # API routes proxy to the ACTIVE network's REST/RPC, selected by the
+  # `qore-network` cookie. They must NEVER be cached at the edge — otherwise one
+  # network's response gets served for the other network's requests at the same
+  # URL (cross-network cache pollution). Force no-store and vary on the cookie.
+  - pattern: "/api/**"
+    headers:
+      - key: "Cache-Control"
+        value: "no-store, no-cache, must-revalidate, proxy-revalidate, private"
+      - key: "CDN-Cache-Control"
+        value: "no-store"
+      - key: "Pragma"
+        value: "no-cache"
+      - key: "Expires"
+        value: "0"
+      - key: "Vary"
+        value: "Cookie"

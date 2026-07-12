@@ -305,9 +305,13 @@ function QuantumSecurity({ tx }: { tx: TxSummary }) {
           <ShieldAlert className="h-4 w-4 text-amber-500" />
         )}
         Signature security
-        {tx.hasPqcExtension && (
+        {tx.hasPqcExtension ? (
           <span className="ml-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
             quantum-safe
+          </span>
+        ) : (
+          <span className="ml-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+            classical signature
           </span>
         )}
         {verified && (
@@ -362,12 +366,19 @@ function QuantumSecurity({ tx }: { tx: TxSummary }) {
           )}
         </>
       ) : (
-        <p className="mb-2 flex items-start gap-2 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
-          <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-          No post-quantum signature extension on this transaction — classical
-          signature only (EVM-lane transactions are standard secp256k1/EIP-155
-          by design).
-        </p>
+        <>
+          <p className="mb-2 flex items-start gap-2 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+            <Lock className="mt-0.5 h-4 w-4 shrink-0" />
+            No post-quantum signature on this transaction — classical signature
+            only (EVM-lane transactions are standard secp256k1/EIP-155 by
+            design).
+          </p>
+          <FactRow label="Chain hashing">
+            <span className="text-slate-700 dark:text-slate-300">
+              SHAKE-256 (FIPS 202) at the application layer
+            </span>
+          </FactRow>
+        </>
       )}
 
       <div className="mt-3 border-t border-slate-100 pt-3 dark:border-[#1a1f2e]">

@@ -155,15 +155,24 @@ interface LcdTxResponse {
   };
 }
 
+// The ONLY extension that carries a post-quantum signature. Other extension
+// options exist on the chain (e.g. /cosmos.evm.vm.v1.ExtensionOptionsEthereumTx
+// marks EVM-lane txs) and say nothing about signature security — counting them
+// as PQC would label plain secp256k1 txs "quantum-safe".
+const PQC_HYBRID_SIG_TYPE = "/qorechain.pqc.v1.PQCHybridSignature";
+
 function toTxSummary(r: LcdTxResponse): TxSummary {
   const feeAmounts = r.tx.auth_info.fee.amount ?? [];
-  const extensions = (r.tx.body.extension_options ?? []).map((e) => ({
-    typeUrl: e["@type"],
-    algorithmId: (e.algorithm_id as number | string) ?? "unknown",
-    signatureBytes: Math.floor(
-      (String(e.pqc_signature ?? "").length * 3) / 4,
-    ),
-  }));
+  const extensions = (r.tx.body.extension_options ?? [])
+    .filter((e) => e["@type"] === PQC_HYBRID_SIG_TYPE)
+    .map((e) => ({
+      typeUrl: e["@type"],
+      algorithmId: (e.algorithm_id as number | string) ?? "unknown",
+      signatureBytes: Math.floor(
+        (String(e.pqc_signature ?? "").length * 3) / 4,
+      ),
+    }))
+    .filter((e) => e.signatureBytes > 0);
   const events: TxEvent[] = (r.tx_response.events ?? []).map((e) => {
     const attributes = e.attributes.map((a) => ({ key: a.key, value: a.value }));
     const msgIndex = attributes.find((a) => a.key === "msg_index")?.value;

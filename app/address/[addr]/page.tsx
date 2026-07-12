@@ -3,7 +3,7 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { Landmark, ShieldCheck, Wallet } from "lucide-react";
+import { Boxes, Landmark, ShieldCheck, Wallet } from "lucide-react";
 
 import {
   evmCall,
@@ -20,6 +20,7 @@ import {
   evmAddressFromBech32,
   svmAddressFromBech32,
 } from "@/lib/wallet";
+import { moduleLabel } from "@/lib/modules";
 import { CARD, CopyValue, ErrorBanner, FactRow, Spinner } from "@/components/ui";
 
 interface Balances {
@@ -104,6 +105,21 @@ export default function AddressPage({
       <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
         <Wallet className="h-6 w-6 text-emerald-500" /> Account
       </h1>
+
+      {qorAddress && moduleLabel(qorAddress) && (
+        <div className="flex items-start gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 text-sm text-sky-700 dark:text-sky-300">
+          <Boxes className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <span className="font-semibold">
+              {moduleLabel(qorAddress)} module account
+            </span>{" "}
+            — this is a protocol-owned account, not a user wallet. It has no
+            private key and no one can spend from it directly; its balance is
+            moved only by chain logic (e.g. escrow during EVM transfers, fee
+            collection, staking pools).
+          </div>
+        </div>
+      )}
 
       {!qorAddress || !balances ? (
         <Spinner />

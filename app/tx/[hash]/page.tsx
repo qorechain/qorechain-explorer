@@ -5,6 +5,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Boxes,
   Coins,
   FileText,
   ListTree,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { fetchTx, type TxEvent, type TxSummary } from "@/lib/chain";
+import { moduleLabel } from "@/lib/modules";
 import { formatQor, timeAgo, truncateMiddle } from "@/lib/format";
 import { CARD, CopyValue, ErrorBanner, FactRow, Spinner } from "@/components/ui";
 
@@ -44,14 +46,27 @@ function isAccountAddress(v: string): boolean {
 }
 
 function AddrLink({ value }: { value: string }) {
+  const mod = moduleLabel(value);
   if (isAccountAddress(value)) {
     return (
-      <Link
-        href={`/address/${value}`}
-        className="cursor-pointer font-mono text-emerald-600 hover:underline dark:text-emerald-400"
-      >
-        {truncateMiddle(value, 10)}
-      </Link>
+      <span className="inline-flex items-center gap-1.5">
+        <Link
+          href={`/address/${value}`}
+          className="cursor-pointer font-mono text-emerald-600 hover:underline dark:text-emerald-400"
+          title={mod ? `${mod} module account — ${value}` : value}
+        >
+          {truncateMiddle(value, 10)}
+        </Link>
+        {mod && (
+          <span
+            className="inline-flex items-center gap-1 rounded bg-sky-500/10 px-1.5 py-0.5 text-xs font-medium text-sky-600 dark:text-sky-400"
+            title={`${mod} module account — no private key, controlled by chain logic`}
+          >
+            <Boxes className="h-3 w-3" />
+            {mod}
+          </span>
+        )}
+      </span>
     );
   }
   return <CopyValue value={value} display={truncateMiddle(value, 12)} />;
@@ -225,11 +240,23 @@ function TokenMovements({ tx }: { tx: TxSummary }) {
     const isFee = e.attributes.every((a) => a.msgIndex === undefined);
     return { sender: attr("sender"), recipient: attr("recipient"), amount: attr("amount"), isFee };
   });
+  const routesThroughModule = rows.some(
+    (r) => moduleLabel(r.sender) || moduleLabel(r.recipient),
+  );
   return (
     <div className={`${CARD} p-5`}>
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
         <Coins className="h-4 w-4 text-emerald-500" /> Token movements
       </div>
+      {routesThroughModule && (
+        <p className="mb-3 rounded-lg bg-sky-500/10 p-3 text-xs text-sky-700 dark:text-sky-300">
+          Some legs pass through a <span className="font-semibold">module account</span>{" "}
+          (a chain-controlled escrow with no private key, tagged below). EVM
+          transfers, for example, route value through the EVM module, so a
+          single payment appears as two bank legs — into the module, then out to
+          the recipient. It is one transfer, not two.
+        </p>
+      )}
       <ul className="divide-y divide-slate-100 dark:divide-[#1a1f2e]">
         {rows.map((r, i) => (
           <li key={i} className="flex flex-wrap items-center gap-2 py-2.5 text-sm">

@@ -3,7 +3,22 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, Box, Coins, Landmark, Users, Zap } from "lucide-react";
+import {
+  Activity,
+  ArrowLeftRight,
+  Box,
+  Coins,
+  FileCode2,
+  KeyRound,
+  Landmark,
+  Send,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Users,
+  Vote,
+  Zap,
+} from "lucide-react";
 
 import {
   fetchBondedTokens,
@@ -12,6 +27,7 @@ import {
   fetchTxs,
   fetchValidators,
   fetchSupply,
+  txSecurityTier,
   type BlockSummary,
   type ChainStatus,
   type TxSummary,
@@ -24,6 +40,49 @@ import { NetworkInfoPanel } from "@/components/NetworkInfoPanel";
 import { AddNetworkPanel } from "@/components/AddNetworkPanel";
 
 const REFRESH_MS = 6000;
+
+// Icon per message type — keyed on the short type name (last proto segment).
+function MessageTypeIcon({ type }: { type: string }) {
+  const cls = "h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500";
+  if (type.startsWith("MsgRegisterPQCKey") || type.startsWith("MsgRotatePQCKey"))
+    return <KeyRound className={cls} aria-label="PQC key" />;
+  if (type === "MsgEthereumTx")
+    return <FileCode2 className={cls} aria-label="EVM transaction" />;
+  if (type === "MsgSend" || type === "MsgMultiSend")
+    return <Send className={cls} aria-label="transfer" />;
+  if (type.startsWith("MsgDelegate") || type.startsWith("MsgUndelegate") || type.startsWith("MsgBeginRedelegate"))
+    return <Landmark className={cls} aria-label="staking" />;
+  if (type.startsWith("MsgVote") || type.startsWith("MsgSubmitProposal"))
+    return <Vote className={cls} aria-label="governance" />;
+  return <ArrowLeftRight className={cls} aria-label="transaction" />;
+}
+
+// Three-tier post-quantum security shield. Honest by construction:
+// green only when a real PQC signature is present.
+const SECURITY_SHIELD = {
+  pqc: {
+    Icon: ShieldCheck,
+    cls: "text-emerald-500",
+    title: "Quantum-safe — signed with a post-quantum ML-DSA-87 signature",
+  },
+  shake: {
+    Icon: Shield,
+    cls: "text-amber-500",
+    title:
+      "Not quantum-safe — classical secp256k1 signature over SHAKE-256 (FIPS 202) native sign-bytes",
+  },
+  classical: {
+    Icon: ShieldAlert,
+    cls: "text-red-500",
+    title:
+      "Not quantum-safe — fully classical EVM signature (keccak256 + secp256k1)",
+  },
+} as const;
+
+function SecurityShield({ tx }: { tx: TxSummary }) {
+  const { Icon, cls, title } = SECURITY_SHIELD[txSecurityTier(tx)];
+  return <Icon className={`h-4 w-4 shrink-0 ${cls}`} aria-label={title} />;
+}
 
 function StatCard({
   icon,
@@ -201,8 +260,12 @@ export default function HomePage() {
                   >
                     {truncateMiddle(t.hash, 8)}
                   </Link>
-                  <span className="truncate text-slate-500 dark:text-slate-400">
-                    {t.messages.map((m) => m.type).join(", ") || "—"}
+                  <span className="flex min-w-0 flex-1 items-center gap-2">
+                    <MessageTypeIcon type={t.messages[0]?.type ?? ""} />
+                    <span className="truncate text-slate-500 dark:text-slate-400">
+                      {t.messages.map((m) => m.type).join(", ") || "—"}
+                    </span>
+                    <SecurityShield tx={t} />
                   </span>
                   <span
                     className={`rounded-md px-1.5 py-0.5 text-xs font-semibold ${

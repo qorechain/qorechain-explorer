@@ -210,6 +210,29 @@ function toTxSummary(r: LcdTxResponse): TxSummary {
   };
 }
 
+/**
+ * Post-quantum security tier of a transaction — the truthful, three-way answer
+ * to "is this quantum-safe?".
+ *
+ *  - "pqc":       carries a real /qorechain.pqc.v1.PQCHybridSignature (ML-DSA-87).
+ *                 Signature itself is quantum-resistant.  → green shield
+ *  - "shake":     classical secp256k1 signature, but signed over QoreChain's
+ *                 native SIGN_MODE_DIRECT sign-bytes which are hashed with
+ *                 SHAKE-256 on-chain. Not quantum-safe, but not the plain
+ *                 Ethereum path either.  → orange shield
+ *  - "classical": EVM-lane (MsgEthereumTx) — keccak256 + secp256k1 end to end,
+ *                 no QoreChain quantum layer at all.  → red shield
+ */
+export type TxSecurityTier = "pqc" | "shake" | "classical";
+
+export function txSecurityTier(tx: TxSummary): TxSecurityTier {
+  if (tx.hasPqcExtension) return "pqc";
+  const isEvm = tx.messagesFull.some((m) =>
+    String(m["@type"] ?? "").endsWith("MsgEthereumTx"),
+  );
+  return isEvm ? "classical" : "shake";
+}
+
 export async function fetchTx(hash: string): Promise<TxSummary> {
   const r = await lcd<LcdTxResponse>(`cosmos/tx/v1beta1/txs/${hash}`);
   return toTxSummary(r);

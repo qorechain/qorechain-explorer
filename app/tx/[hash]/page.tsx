@@ -311,7 +311,7 @@ function QuantumSecurity({ tx }: { tx: TxSummary }) {
           </span>
         ) : (
           <span className="ml-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
-            classical signature
+            not quantum-safe
           </span>
         )}
         {verified && (
@@ -369,9 +369,10 @@ function QuantumSecurity({ tx }: { tx: TxSummary }) {
         <>
           <p className="mb-2 flex items-start gap-2 rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
             <Lock className="mt-0.5 h-4 w-4 shrink-0" />
-            No post-quantum signature on this transaction — classical signature
-            only (EVM-lane transactions are standard secp256k1/EIP-155 by
-            design).
+            This transaction carries no post-quantum signature. It is signed
+            with classical ECDSA (secp256k1) only and is not protected against
+            quantum attacks. EVM-lane transactions are standard
+            secp256k1/EIP-155 by design.
           </p>
           <FactRow label="Chain hashing">
             <span className="text-slate-700 dark:text-slate-300">
@@ -385,6 +386,17 @@ function QuantumSecurity({ tx }: { tx: TxSummary }) {
         <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
           Classical layer
         </div>
+        {tx.signers.length === 0 &&
+          tx.messagesFull.some((m) =>
+            String(m["@type"] ?? "").endsWith("MsgEthereumTx"),
+          ) && (
+            <FactRow label="Signature scheme">
+              <span className="text-slate-700 dark:text-slate-300">
+                secp256k1 (ECDSA, EIP-155) — signature carried inside the
+                Ethereum transaction envelope
+              </span>
+            </FactRow>
+          )}
         {tx.signers.map((s, i) => (
           <div key={i}>
             <FactRow label="Signature scheme">

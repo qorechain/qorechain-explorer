@@ -223,10 +223,30 @@ function toTxSummary(r: LcdTxResponse): TxSummary {
  *  - "classical": EVM-lane (MsgEthereumTx) — keccak256 + secp256k1 end to end,
  *                 no QoreChain quantum layer at all.  → red shield
  */
-export type TxSecurityTier = "pqc" | "shake" | "classical";
+export type TxSecurityTier = "pqc" | "enrollment" | "shake" | "classical";
+
+// Messages that ENROLL or replace a post-quantum key. A first-time registration
+// is necessarily signed classically — there is no PQC key yet to sign with, so
+// it is a bootstrap-exempt tx. Flagging it "not quantum-safe" reads as if the
+// quantum feature were weak, when this is the very tx that turns PQC on.
+const PQC_KEY_MGMT_TYPES = [
+  "/qorechain.pqc.v1.MsgRegisterPQCKey",
+  "/qorechain.pqc.v1.MsgRegisterPQCKeyV2",
+  "/qorechain.pqc.v1.MsgRotatePQCKey",
+];
+
+export function isPqcKeyManagement(tx: TxSummary): boolean {
+  return tx.messagesFull.some((m) =>
+    PQC_KEY_MGMT_TYPES.includes(String(m["@type"] ?? "")),
+  );
+}
 
 export function txSecurityTier(tx: TxSummary): TxSecurityTier {
+  // A key rotation is itself hybrid-signed (the account already has a PQC key),
+  // so hasPqcExtension wins and it is genuinely "pqc". Only a first registration
+  // with no PQC extension falls through to "enrollment".
   if (tx.hasPqcExtension) return "pqc";
+  if (isPqcKeyManagement(tx)) return "enrollment";
   const isEvm = tx.messagesFull.some((m) =>
     String(m["@type"] ?? "").endsWith("MsgEthereumTx"),
   );

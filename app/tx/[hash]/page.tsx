@@ -8,13 +8,14 @@ import {
   Boxes,
   Coins,
   FileText,
+  KeyRound,
   ListTree,
   Lock,
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
 
-import { fetchTx, type TxEvent, type TxSummary } from "@/lib/chain";
+import { fetchTx, txSecurityTier, type TxEvent, type TxSummary } from "@/lib/chain";
 import { moduleLabel } from "@/lib/modules";
 import { formatQor, timeAgo, truncateMiddle } from "@/lib/format";
 import { CARD, CopyValue, ErrorBanner, FactRow, Spinner } from "@/components/ui";
@@ -322,21 +323,30 @@ function QuantumSecurity({ tx }: { tx: TxSummary }) {
   const verified = attr(pqcHybrid, "status") === "verified";
   const hybridMode = attr(pqcVerify, "hybrid_mode");
   const keyType = attr(pqcVerify, "key_type");
+  const tier = txSecurityTier(tx);
 
   return (
     <div className={`${CARD} p-5`}>
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-        {tx.hasPqcExtension ? (
+        {tier === "pqc" ? (
           <ShieldCheck className="h-4 w-4 text-emerald-500" />
+        ) : tier === "enrollment" ? (
+          <KeyRound className="h-4 w-4 text-sky-500" />
         ) : (
           <ShieldAlert className="h-4 w-4 text-amber-500" />
         )}
         Signature security
-        {tx.hasPqcExtension ? (
+        {tier === "pqc" && (
           <span className="ml-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
             quantum-safe
           </span>
-        ) : (
+        )}
+        {tier === "enrollment" && (
+          <span className="ml-1 rounded-md bg-sky-500/10 px-2 py-0.5 text-xs font-semibold text-sky-600 dark:text-sky-400">
+            post-quantum key enrollment
+          </span>
+        )}
+        {(tier === "shake" || tier === "classical") && (
           <span className="ml-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
             not quantum-safe
           </span>
@@ -348,7 +358,29 @@ function QuantumSecurity({ tx }: { tx: TxSummary }) {
         )}
       </div>
 
-      {tx.hasPqcExtension ? (
+      {tier === "enrollment" ? (
+        <>
+          <p className="mb-2 flex items-start gap-2 rounded-lg bg-sky-500/10 p-3 text-xs text-sky-700 dark:text-sky-300">
+            <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
+            This transaction <span className="font-semibold">registers a
+            post-quantum ML-DSA-87 (FIPS-204) key</span> on-chain. The
+            registration itself is signed with the classical key by design — a
+            one-time bootstrap, since the post-quantum key does not exist on
+            the account yet to sign with. From this transaction onward, every
+            tx from this account is expected to carry a hybrid PQC signature.
+          </p>
+          <FactRow label="Enrolled algorithm">
+            <span className="text-slate-700 dark:text-slate-300">
+              ML-DSA-87 (FIPS-204, &quot;Dilithium-5&quot;)
+            </span>
+          </FactRow>
+          <FactRow label="Chain hashing">
+            <span className="text-slate-700 dark:text-slate-300">
+              SHAKE-256 (FIPS 202) at the application layer
+            </span>
+          </FactRow>
+        </>
+      ) : tier === "pqc" ? (
         <>
           {tx.pqcExtensions.map((ext, i) => {
             const info =

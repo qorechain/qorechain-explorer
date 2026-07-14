@@ -65,6 +65,12 @@ const SECURITY_SHIELD = {
     cls: "text-emerald-500",
     title: "Quantum-safe — signed with a post-quantum ML-DSA-87 signature",
   },
+  enrollment: {
+    Icon: KeyRound,
+    cls: "text-sky-500",
+    title:
+      "Post-quantum key enrollment — a one-time classically-signed bootstrap that turns on PQC signing for this account",
+  },
   shake: {
     Icon: Shield,
     cls: "text-amber-500",

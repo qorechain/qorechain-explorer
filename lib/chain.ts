@@ -262,10 +262,12 @@ export async function fetchTxs(
   query: string,
   limit = 15,
 ): Promise<TxSummary[]> {
+  // The Cosmos tx service honours the top-level `limit` param; `pagination.limit`
+  // is ignored here and returns a full 100-tx page, so we must use `limit`.
   const r = await lcd<{ txs: LcdTxResponse["tx"][]; tx_responses: LcdTxResponse["tx_response"][] }>(
-    `cosmos/tx/v1beta1/txs?query=${encodeURIComponent(query)}&order_by=ORDER_BY_DESC&pagination.limit=${limit}`,
+    `cosmos/tx/v1beta1/txs?query=${encodeURIComponent(query)}&order_by=ORDER_BY_DESC&limit=${limit}`,
   );
-  const txs = r.tx_responses ?? [];
+  const txs = (r.tx_responses ?? []).slice(0, limit);
   return txs.map((resp, i) =>
     toTxSummary({ tx: r.txs[i], tx_response: resp }),
   );

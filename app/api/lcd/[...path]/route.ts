@@ -32,7 +32,18 @@ export async function GET(
       signal: AbortSignal.timeout(15000),
     });
     const body = await res.json();
-    const out = NextResponse.json(body, { status: res.status });
+    // CosmWasm txs embed the full contract bytecode (`wasm_byte_code`) as
+    // multi-MB base64 — a single MsgStoreCode tx can be 2–7 MB, and a page of
+    // them blows past the platform's response-size cap (→ HTTP 413, empty body,
+    // "No indexed transactions yet"). The explorer never renders raw bytecode,
+    // so strip it before returning. Cheap and universal across all LCD paths.
+    const cleaned = JSON.stringify(body, (key, value) =>
+      key === "wasm_byte_code" && typeof value === "string" ? "" : value,
+    );
+    const out = new NextResponse(cleaned, {
+      status: res.status,
+      headers: { "content-type": "application/json" },
+    });
     // Defense-in-depth against edge caching: this response is network-specific
     // (chosen by the `qore-network` cookie), so it must never be cached under a
     // cookie-agnostic key. Belt-and-braces with customHttp.yml.

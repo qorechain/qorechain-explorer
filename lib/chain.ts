@@ -397,3 +397,54 @@ export async function txHashFromBase64(b64: string): Promise<string> {
     .join("")
     .toUpperCase();
 }
+
+// ─── Token / asset listings (SCRUM-223: routes linked by wallets) ───
+
+export interface DenomSupply {
+  denom: string;
+  amount: string;
+  /** From bank denoms_metadata when present. */
+  display?: string;
+  name?: string;
+  symbol?: string;
+}
+
+/** Full on-chain token supply merged with denom metadata (name/symbol). */
+export async function fetchTokenList(): Promise<DenomSupply[]> {
+  const [supply, meta] = await Promise.all([
+    lcd<{ supply: Array<{ denom: string; amount: string }> }>(
+      "cosmos/bank/v1beta1/supply?pagination.limit=500",
+    ),
+    lcd<{ metadatas: Array<{ base: string; display: string; name: string; symbol: string }> }>(
+      "cosmos/bank/v1beta1/denoms_metadata?pagination.limit=500",
+    ).catch(() => ({ metadatas: [] })),
+  ]);
+  const byBase = new Map(meta.metadatas.map((m) => [m.base, m]));
+  return (supply.supply ?? []).map((s) => {
+    const m = byBase.get(s.denom);
+    return { denom: s.denom, amount: s.amount, display: m?.display, name: m?.name, symbol: m?.symbol };
+  });
+}
+
+/** Supply of one denom (token detail page). */
+export async function fetchDenomSupply(denom: string): Promise<DenomSupply | null> {
+  const r = await lcd<{ amount?: { denom: string; amount: string } }>(
+    `cosmos/bank/v1beta1/supply/by_denom?denom=${encodeURIComponent(denom)}`,
+  ).catch(() => null);
+  if (!r?.amount) return null;
+  return { denom: r.amount.denom, amount: r.amount.amount };
+}
+
+export interface WasmCodeInfo {
+  codeId: string;
+  creator: string;
+  dataHash: string;
+}
+
+/** Uploaded CosmWasm code list (contracts page). */
+export async function fetchWasmCodes(): Promise<WasmCodeInfo[]> {
+  const r = await lcd<{ code_infos: Array<{ code_id: string; creator: string; data_hash: string }> }>(
+    "cosmwasm/wasm/v1/code?pagination.limit=200&pagination.reverse=true",
+  );
+  return (r.code_infos ?? []).map((c) => ({ codeId: c.code_id, creator: c.creator, dataHash: c.data_hash }));
+}

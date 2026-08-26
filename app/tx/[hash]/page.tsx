@@ -15,10 +15,17 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-import { fetchTx, txSecurityTier, type TxEvent, type TxSummary } from "@/lib/chain";
+import {
+  fetchTx,
+  fetchTxNeighbours,
+  txSecurityTier,
+  type TxEvent,
+  type TxSummary,
+} from "@/lib/chain";
 import { moduleLabel } from "@/lib/modules";
 import { formatQor, timeAgo, truncateMiddle } from "@/lib/format";
 import { CARD, CopyValue, ErrorBanner, FactRow, Spinner } from "@/components/ui";
+import { Stepper } from "@/components/Pager";
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -121,14 +128,39 @@ export default function TxPage({
   const { hash } = use(params);
   const [tx, setTx] = useState<TxSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Chain-order neighbours. Resolved after the tx itself, because finding them
+  // needs its height, and never blocking the page on them: the transaction is
+  // what the visitor came for.
+  const [neighbours, setNeighbours] = useState<{ prev: string | null; next: string | null }>({
+    prev: null,
+    next: null,
+  });
+  const [neighboursLoading, setNeighboursLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setTx(null);
     setError(null);
+    setNeighbours({ prev: null, next: null });
+    setNeighboursLoading(true);
     fetchTx(hash)
-      .then((t) => !cancelled && setTx(t))
-      .catch((e) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
+      .then(async (t) => {
+        if (cancelled) return;
+        setTx(t);
+        const n = await fetchTxNeighbours(t.hash, t.height).catch(() => ({
+          prev: null,
+          next: null,
+        }));
+        if (!cancelled) {
+          setNeighbours(n);
+          setNeighboursLoading(false);
+        }
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+        setNeighboursLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -136,9 +168,18 @@ export default function TxPage({
 
   return (
     <div className="space-y-6 pb-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-        Transaction
-      </h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
+          Transaction
+        </h1>
+        <Stepper
+          prevHref={neighbours.prev ? `/tx/${neighbours.prev}` : null}
+          nextHref={neighbours.next ? `/tx/${neighbours.next}` : null}
+          prevLabel="Previous transaction"
+          nextLabel="Next transaction"
+          loading={neighboursLoading}
+        />
+      </div>
 
       {error && <ErrorBanner message={`Transaction not found: ${error}. Hash: ${hash}`} />}
       {!error && !tx && <Spinner />}

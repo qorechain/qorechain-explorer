@@ -273,6 +273,206 @@ export async function fetchTxs(
   );
 }
 
+/** One page of transactions, plus the chain-wide total so a pager can size itself. */
+export interface TxPage {
+  txs: TxSummary[];
+  total: number;
+}
+
+/**
+ * One page of transactions, newest first.
+ *
+ * The LCD honours top-level `page` alongside `limit` and returns `total`, so a
+ * page is fetched server-side: asking for page 7 costs one request for 100 txs,
+ * not 700 txs thrown away in the browser. `tx.height>0` is the "everything"
+ * query — the tx service requires a query and rejects an empty one.
+ */
+export async function fetchTxPage(page = 1, limit = 100): Promise<TxPage> {
+  const r = await lcd<{
+    txs: LcdTxResponse["tx"][];
+    tx_responses: LcdTxResponse["tx_response"][];
+    total?: string;
+  }>(
+    `cosmos/tx/v1beta1/txs?query=${encodeURIComponent("tx.height>0")}` +
+      `&order_by=ORDER_BY_DESC&limit=${limit}&page=${page}`,
+  );
+  const responses = r.tx_responses ?? [];
+  return {
+    txs: responses.map((resp, i) => toTxSummary({ tx: r.txs[i], tx_response: resp })),
+    total: Number(r.total ?? responses.length),
+  };
+}
+
+/**
+ * `count` blocks ending at `fromHeight`, newest first. Blocks have no list
+ * endpoint, so they are fetched by height; only the requested window is
+ * requested. A height that does not resolve is dropped rather than failing the
+ * whole page — pruned nodes have gaps.
+ */
+export async function fetchBlocksFrom(
+  fromHeight: string,
+  count = 100,
+): Promise<BlockSummary[]> {
+  const top = BigInt(fromHeight);
+  const n = Math.max(0, Math.min(count, Number(top)));
+  const blocks = await Promise.all(
+    Array.from({ length: n }, (_, i) =>
+      fetchBlock((top - BigInt(i)).toString()).catch(() => null),
+    ),
+  );
+  return blocks.filter((b): b is BlockSummary => b !== null);
+}
+
+/** The transaction immediately before/after this one in the chain. */
+export interface TxNeighbours {
+  prev: string | null; // older
+  next: string | null; // newer
+}
+
+/**
+ * Chain-order neighbours of a transaction — deliberately NOT filter-aware, so
+ * the arrows always mean "the next transaction on the chain" regardless of the
+ * list you arrived from.
+ *
+ * Ordering inside a block is the order the block committed them, so neighbours
+ * are found within the block first and only then in the nearest block that
+ * actually contains transactions. Blocks are mostly empty on this chain, so
+ * stepping height by height would usually walk hundreds of empty blocks.
+ */
+export async function fetchTxNeighbours(
+  hash: string,
+  height: string,
+): Promise<TxNeighbours> {
+  const atHeight = async (q: string, order: "ASC" | "DESC", limit: number) => {
+    const r = await lcd<{ tx_responses: LcdTxResponse["tx_response"][] }>(
+      `cosmos/tx/v1beta1/txs?query=${encodeURIComponent(q)}` +
+        `&order_by=ORDER_BY_${order}&limit=${limit}`,
+    ).catch(() => ({ tx_responses: [] as LcdTxResponse["tx_response"][] }));
+    return r.tx_responses ?? [];
+  };
+
+  const sameBlock = await atHeight(`tx.height=${height}`, "ASC", 100);
+  const idx = sameBlock.findIndex(
+    (t) => t.txhash.toUpperCase() === hash.toUpperCase(),
+  );
+
+  let prev: string | null = null;
+  let next: string | null = null;
+
+  if (idx > 0) prev = sameBlock[idx - 1].txhash;
+  if (idx >= 0 && idx < sameBlock.length - 1) next = sameBlock[idx + 1].txhash;
+
+  if (!prev) {
+    const older = await atHeight(`tx.height<${height}`, "DESC", 1);
+    prev = older[0]?.txhash ?? null;
+  }
+  if (!next) {
+    const newer = await atHeight(`tx.height>${height}`, "ASC", 1);
+    next = newer[0]?.txhash ?? null;
+  }
+  return { prev, next };
+}
+
+/** Headline numbers for the explorer home, all derived from live chain state. */
+export interface NetworkStats {
+  height: number;
+  /** Epoch derived from height: x/inflation has no query endpoint yet. */
+  epoch: number;
+  epochLength: number;
+  epochFirstBlock: number;
+  epochLastBlock: number;
+  epochProgress: number; // 0..1
+  epochSecondsRemaining: number;
+  blockSeconds: number; // measured, not assumed
+  totalTxs: number;
+  tps: number;
+  bonded: string;
+  notBonded: string;
+  supply: string;
+  delinquentStake: string; // tokens held by jailed validators
+  validatorCount: number;
+  jailedCount: number;
+}
+
+const EPOCH_LENGTH = 43200;
+
+/**
+ * One pass over the endpoints the home page needs.
+ *
+ * Block time is MEASURED across a recent window rather than assumed, because
+ * every derived figure here (time remaining, TPS) is wrong by whatever the
+ * assumption is wrong by.
+ */
+export async function fetchNetworkStats(): Promise<NetworkStats> {
+  const tip = await fetchLatestBlock();
+  const height = Number(tip.height);
+  const backCount = 500;
+  const back = Math.max(1, height - backCount);
+
+  const [older, txHead, txWindow, pool, supply, vals] = await Promise.all([
+    fetchBlock(String(back)).catch(() => null),
+    lcd<{ total?: string }>(
+      `cosmos/tx/v1beta1/txs?query=${encodeURIComponent("tx.height>0")}&order_by=ORDER_BY_DESC&limit=1`,
+    ).catch(() => ({ total: "0" })),
+    // Count only, limit=1: the LCD still reports the range total, so this costs
+    // one tx of payload rather than the whole window.
+    lcd<{ total?: string }>(
+      `cosmos/tx/v1beta1/txs?query=${encodeURIComponent(`tx.height>=${back}`)}&order_by=ORDER_BY_DESC&limit=1`,
+    ).catch(() => ({ total: "0" })),
+    lcd<{ pool: { bonded_tokens: string; not_bonded_tokens: string } }>(
+      "cosmos/staking/v1beta1/pool",
+    ),
+    lcd<{ amount: { amount: string } }>(
+      "cosmos/bank/v1beta1/supply/by_denom?denom=uqor",
+    ),
+    lcd<{
+      validators: Array<{ jailed: boolean; tokens: string }>;
+    }>("cosmos/staking/v1beta1/validators?pagination.limit=300").catch(() => ({
+      validators: [] as Array<{ jailed: boolean; tokens: string }>,
+    })),
+  ]);
+
+  const blockSeconds =
+    older && height > back
+      ? (new Date(tip.time).getTime() - new Date(older.time).getTime()) /
+        1000 /
+        (height - back)
+      : 0;
+
+  const epoch = Math.floor(height / EPOCH_LENGTH);
+  const epochFirstBlock = epoch * EPOCH_LENGTH;
+  const epochLastBlock = epochFirstBlock + EPOCH_LENGTH - 1;
+  const into = height - epochFirstBlock;
+
+  const delinquent = (vals.validators ?? [])
+    .filter((v) => v.jailed)
+    .reduce((acc, v) => acc + BigInt(v.tokens), 0n);
+
+  return {
+    height,
+    epoch,
+    epochLength: EPOCH_LENGTH,
+    epochFirstBlock,
+    epochLastBlock,
+    epochProgress: into / EPOCH_LENGTH,
+    epochSecondsRemaining: blockSeconds > 0 ? (EPOCH_LENGTH - into) * blockSeconds : 0,
+    blockSeconds,
+    totalTxs: Number(txHead.total ?? 0),
+    // Real throughput over the measured window. On a quiet chain this is a small
+    // fraction; showing the true figure beats showing a flattering one.
+    tps:
+      blockSeconds > 0
+        ? Number(txWindow.total ?? 0) / ((height - back) * blockSeconds)
+        : 0,
+    bonded: pool.pool.bonded_tokens,
+    notBonded: pool.pool.not_bonded_tokens,
+    supply: supply.amount.amount,
+    delinquentStake: delinquent.toString(),
+    validatorCount: (vals.validators ?? []).length,
+    jailedCount: (vals.validators ?? []).filter((v) => v.jailed).length,
+  };
+}
+
 export interface ValidatorSummary {
   operatorAddress: string;
   moniker: string;

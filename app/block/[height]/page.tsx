@@ -3,11 +3,16 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import { fetchBlock, txHashFromBase64, type BlockSummary } from "@/lib/chain";
+import {
+  fetchBlock,
+  fetchLatestBlock,
+  txHashFromBase64,
+  type BlockSummary,
+} from "@/lib/chain";
 import { timeAgo, truncateMiddle } from "@/lib/format";
 import { CARD, CopyValue, ErrorBanner, FactRow, Spinner } from "@/components/ui";
+import { Stepper } from "@/components/Pager";
 
 export default function BlockPage({
   params,
@@ -18,6 +23,9 @@ export default function BlockPage({
   const [block, setBlock] = useState<BlockSummary | null>(null);
   const [txHashes, setTxHashes] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The chain tip, so "next block" stops at the newest block instead of walking
+  // into heights that do not exist yet.
+  const [tip, setTip] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,6 +40,9 @@ export default function BlockPage({
         if (!cancelled) setTxHashes(hashes);
       })
       .catch((e) => !cancelled && setError(e instanceof Error ? e.message : String(e)));
+    fetchLatestBlock()
+      .then((b) => !cancelled && setTip(Number(b.height)))
+      .catch(() => !cancelled && setTip(null));
     return () => {
       cancelled = true;
     };
@@ -43,22 +54,14 @@ export default function BlockPage({
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
           Block <span className="font-mono">#{Number(height).toLocaleString()}</span>
         </h1>
-        <div className="flex gap-2">
-          <Link
-            href={`/block/${Math.max(1, Number(height) - 1)}`}
-            className="cursor-pointer rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-black/5 dark:border-[#1a1f2e] dark:hover:bg-white/10"
-            aria-label="Previous block"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Link>
-          <Link
-            href={`/block/${Number(height) + 1}`}
-            className="cursor-pointer rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-black/5 dark:border-[#1a1f2e] dark:hover:bg-white/10"
-            aria-label="Next block"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Link>
-        </div>
+        <Stepper
+          prevHref={Number(height) > 1 ? `/block/${Number(height) - 1}` : null}
+          nextHref={
+            tip === null || Number(height) < tip ? `/block/${Number(height) + 1}` : null
+          }
+          prevLabel="Previous block"
+          nextLabel="Next block"
+        />
       </div>
 
       {error && (

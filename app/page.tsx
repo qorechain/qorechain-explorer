@@ -4,7 +4,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Activity,
   ArrowLeftRight,
   Box,
   Coins,
@@ -15,7 +14,6 @@ import {
   Shield,
   ShieldAlert,
   ShieldCheck,
-  Users,
   Vote,
   Zap,
 } from "lucide-react";
@@ -23,6 +21,7 @@ import {
 import {
   fetchBondedTokens,
   fetchLatestBlocks,
+  fetchNetworkStats,
   fetchStatus,
   fetchTxs,
   fetchValidators,
@@ -30,6 +29,7 @@ import {
   txSecurityTier,
   type BlockSummary,
   type ChainStatus,
+  type NetworkStats,
   type TxSummary,
 } from "@/lib/chain";
 import { formatQor, timeAgo, truncateMiddle } from "@/lib/format";
@@ -117,8 +117,87 @@ function StatCard({
   );
 }
 
+/** A headline number with two supporting facts underneath. */
+function StatPanel({
+  label,
+  value,
+  accent,
+  right,
+  rows,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  right?: React.ReactNode;
+  rows: Array<{ k: string; v: string; k2?: string; v2?: string }>;
+}) {
+  return (
+    <div className={`${CARD} p-5`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-sm text-slate-500 dark:text-slate-400">{label}</div>
+        {right}
+      </div>
+      <div
+        className={`mt-1 text-2xl font-semibold tracking-tight ${
+          accent ? "text-emerald-600 dark:text-emerald-400" : "text-slate-900 dark:text-white"
+        }`}
+      >
+        {value}
+      </div>
+      <div className="mt-4 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+        {rows.map((r, i) => (
+          <div
+            key={r.k}
+            className={`grid grid-cols-2 gap-3 py-1.5 ${
+              i > 0 ? "border-t border-slate-100 dark:border-white/[0.05]" : ""
+            }`}
+          >
+            <div>
+              <div className="text-xs text-slate-400">{r.k}</div>
+              <div className="text-sm text-slate-700 dark:text-slate-200">{r.v}</div>
+            </div>
+            {r.k2 !== undefined && (
+              <div>
+                <div className="text-xs text-slate-400">{r.k2}</div>
+                <div className="text-sm text-slate-700 dark:text-slate-200">{r.v2}</div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** "1d 18h 51m 3s" from seconds; empty when the input is not usable. */
+function durationLabel(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "—";
+  const s = Math.floor(seconds);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return [d ? `${d}d` : "", h ? `${h}h` : "", `${m}m`].filter(Boolean).join(" ");
+}
+
+function pct(part: string, whole: string): string {
+  try {
+    const w = BigInt(whole);
+    if (w === 0n) return "—";
+    return `${(Number((BigInt(part) * 10000n) / w) / 100).toFixed(2)}%`;
+  } catch {
+    return "—";
+  }
+}
+
 export default function HomePage() {
   const { network } = useNetwork();
+  const [stats, setStats] = useState<NetworkStats | null>(null);
+  const [supplyBreakdown, setSupplyBreakdown] = useState<{
+    total: string;
+    circulating: string;
+    nonCirculating: string;
+    incomplete?: boolean;
+  } | null>(null);
   const [status, setStatus] = useState<ChainStatus | null>(null);
   const [blocks, setBlocks] = useState<BlockSummary[] | null>(null);
   const [txs, setTxs] = useState<TxSummary[] | null>(null);
@@ -144,6 +223,13 @@ export default function HomePage() {
       await Promise.all([
         fetchLatestBlocks(20).then((b) => !cancelled && setBlocks(b)).catch(() => undefined),
         fetchTxs("tx.height>0", 20).then((t) => !cancelled && setTxs(t)).catch(() => !cancelled && setTxs([])),
+        fetchNetworkStats().then((n) => !cancelled && setStats(n)).catch(() => !cancelled && setStats(null)),
+        // Server-computed and cached: ~120 upstream calls, not something to run
+        // in every visitor's browser.
+        fetch("/api/supply", { cache: "no-store" })
+          .then((r) => r.json())
+          .then((v) => !cancelled && setSupplyBreakdown(v))
+          .catch(() => !cancelled && setSupplyBreakdown(null)),
         fetchValidators().then((v) => !cancelled && setValidatorCount(v.length)).catch(() => undefined),
         fetchSupply().then((v) => !cancelled && setSupply(v)).catch(() => undefined),
         fetchBondedTokens().then((v) => !cancelled && setBonded(v)).catch(() => undefined),
@@ -178,40 +264,124 @@ export default function HomePage() {
         />
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard
-          icon={<Box className="h-5 w-5" />}
-          label="Block height"
-          value={status?.height ? Number(status.height).toLocaleString() : "—"}
-          sub={status?.blockTime ? timeAgo(status.blockTime) : undefined}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatPanel
+          label="QOR Supply"
+          value={stats ? `${formatQor(stats.supply, 2)}` : supply ? formatQor(supply, 2) : "—"}
+          rows={[
+            {
+              k: "Circulating Supply",
+              v: supplyBreakdown
+                ? `${formatQor(supplyBreakdown.circulating, 2)} QOR (${pct(
+                    supplyBreakdown.circulating,
+                    supplyBreakdown.total,
+                  )})`
+                : "—",
+            },
+            {
+              k: "Non-circulating Supply",
+              v: supplyBreakdown
+                ? `${formatQor(supplyBreakdown.nonCirculating, 2)} QOR (${pct(
+                    supplyBreakdown.nonCirculating,
+                    supplyBreakdown.total,
+                  )})`
+                : "—",
+            },
+          ]}
         />
-        <StatCard
-          icon={<Activity className="h-5 w-5" />}
-          label="Chain"
-          value={status?.chainId ?? "—"}
-          sub={status?.catchingUp ? "syncing" : status?.ok ? "live" : undefined}
+
+        <StatPanel
+          label="Current Epoch"
+          accent
+          value={stats ? stats.epoch.toLocaleString() : "—"}
+          right={
+            stats ? (
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-emerald-500"
+                    style={{ width: `${Math.min(100, stats.epochProgress * 100).toFixed(2)}%` }}
+                  />
+                </div>
+                <span className="text-xs text-slate-400">
+                  {(stats.epochProgress * 100).toFixed(2)}%
+                </span>
+              </div>
+            ) : undefined
+          }
+          rows={[
+            {
+              k: "Block Range",
+              v: stats
+                ? `${stats.epochFirstBlock.toLocaleString()} to ${stats.epochLastBlock.toLocaleString()}`
+                : "—",
+            },
+            {
+              k: "Time Remain",
+              v: stats ? durationLabel(stats.epochSecondsRemaining) : "—",
+            },
+          ]}
         />
-        <StatCard
-          icon={<Users className="h-5 w-5" />}
-          label="Validators"
-          value={validatorCount !== null ? String(validatorCount) : "—"}
+
+        <StatPanel
+          label="Network (Transactions)"
+          value={stats ? stats.totalTxs.toLocaleString() : "—"}
+          rows={[
+            {
+              k: "Block Height",
+              v: stats ? stats.height.toLocaleString() : "—",
+              k2: "Chain",
+              v2: status?.chainId ?? "—",
+            },
+            {
+              k: "TPS",
+              v: stats ? stats.tps.toFixed(4) : "—",
+              k2: "Block time",
+              v2: stats && stats.blockSeconds > 0 ? `${stats.blockSeconds.toFixed(3)}s` : "—",
+            },
+          ]}
         />
-        <StatCard
-          icon={<Coins className="h-5 w-5" />}
-          label="Supply"
-          value={supply ? `${formatQor(supply, 0)} QOR` : "—"}
-        />
-        <StatCard
-          icon={<Landmark className="h-5 w-5" />}
-          label="Bonded"
-          value={bonded ? `${formatQor(bonded, 0)} QOR` : "—"}
+
+        <StatPanel
+          label="Total Stake (QOR)"
+          value={stats ? formatQor(stats.bonded, 2) : bonded ? formatQor(bonded, 2) : "—"}
+          rows={[
+            {
+              k: "Active Stake",
+              v: stats
+                ? `${formatQor(
+                    (BigInt(stats.bonded) - BigInt(stats.delinquentStake)).toString(),
+                    2,
+                  )} QOR (${pct(
+                    (BigInt(stats.bonded) - BigInt(stats.delinquentStake)).toString(),
+                    stats.bonded,
+                  )})`
+                : "—",
+            },
+            {
+              k: "Delinquent Stake",
+              v: stats
+                ? `${formatQor(stats.delinquentStake, 2)} QOR (${pct(stats.delinquentStake, stats.bonded)})`
+                : "—",
+              k2: "Validators",
+              v2: stats ? `${stats.validatorCount - stats.jailedCount}/${stats.validatorCount} active` : "—",
+            },
+          ]}
         />
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <div className={`${CARD} p-5`}>
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-            <Box className="h-4 w-4 text-emerald-500" /> Latest blocks
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+              <Box className="h-4 w-4 text-emerald-500" /> Latest blocks
+            </div>
+            <Link
+              href="/blocks"
+              className="text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+            >
+              View all →
+            </Link>
           </div>
           {blocks === null ? (
             <Spinner />
@@ -245,8 +415,16 @@ export default function HomePage() {
         </div>
 
         <div className={`${CARD} p-5`}>
-          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-            <Zap className="h-4 w-4 text-emerald-500" /> Latest transactions
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+              <Zap className="h-4 w-4 text-emerald-500" /> Latest transactions
+            </div>
+            <Link
+              href="/txs"
+              className="text-xs font-medium text-emerald-600 hover:underline dark:text-emerald-400"
+            >
+              View all →
+            </Link>
           </div>
           {txs === null ? (
             <Spinner />

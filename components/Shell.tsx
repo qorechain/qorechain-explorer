@@ -93,6 +93,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </span>
           </span>
         </Link>
+        {/* Internal nav: before this, /blocks, /txs and /validators existed but
+            were reachable only from the home page. */}
+        <nav className="hidden items-center gap-1 md:flex">
+          {[
+            { href: "/blocks", label: "Blocks" },
+            { href: "/txs", label: "Transactions" },
+            { href: "/validators", label: "Validators" },
+          ].map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-black/5 hover:text-emerald-600 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-emerald-400"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
         <div className="flex items-center gap-2 sm:gap-3">
           <NetworkSwitcher />
           <ThemeToggle />

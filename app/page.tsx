@@ -124,17 +124,29 @@ function StatPanel({
   accent,
   right,
   rows,
+  href,
 }: {
   label: string;
   value: string;
   accent?: boolean;
   right?: React.ReactNode;
   rows: Array<{ k: string; v: string; k2?: string; v2?: string }>;
+  /** Makes the panel's label a link to the page that explains the number. */
+  href?: string;
 }) {
   return (
     <div className={`${CARD} p-5`}>
       <div className="flex items-start justify-between gap-3">
-        <div className="text-sm text-slate-500 dark:text-slate-400">{label}</div>
+        {href ? (
+          <Link
+            href={href}
+            className="text-sm text-emerald-600 hover:underline dark:text-emerald-400"
+          >
+            {label} →
+          </Link>
+        ) : (
+          <div className="text-sm text-slate-500 dark:text-slate-400">{label}</div>
+        )}
         {right}
       </div>
       <div
@@ -343,6 +355,7 @@ export default function HomePage() {
         />
 
         <StatPanel
+          href="/validators"
           label="Total Stake (QOR)"
           value={stats ? formatQor(stats.bonded, 2) : bonded ? formatQor(bonded, 2) : "—"}
           rows={[

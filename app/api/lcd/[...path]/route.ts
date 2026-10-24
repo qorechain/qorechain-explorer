@@ -8,26 +8,25 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getActiveNetworkId, getNetwork, NETWORK_COOKIE } from "@/lib/registry";
+import { lcdTarget } from "@/lib/lcdTarget";
 
 export const dynamic = "force-dynamic";
-
-const ALLOWED_PREFIXES = ["cosmos/", "cosmwasm/", "qorechain/"];
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
   const { path } = await params;
-  const lcdPath = path.join("/");
-  if (!ALLOWED_PREFIXES.some((p) => lcdPath.startsWith(p))) {
-    return NextResponse.json({ error: "path not allowed" }, { status: 400 });
-  }
   const net = getNetwork(
     getActiveNetworkId(req.cookies.get(NETWORK_COOKIE)?.value),
   );
-  const qs = new URL(req.url).search;
+  // Segment-safe target: the allowlist is checked on the URL actually fetched.
+  const target = lcdTarget(net.rest, path, new URL(req.url).search);
+  if (!target) {
+    return NextResponse.json({ error: "path not allowed" }, { status: 400 });
+  }
   try {
-    const res = await fetch(`${net.rest}/${lcdPath}${qs}`, {
+    const res = await fetch(target, {
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
     });

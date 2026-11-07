@@ -126,3 +126,16 @@ export function valoperToAccount(valoper: string, prefix = "qor"): string | null
   const bytes = bech32Decode(valoper);
   return bytes ? bech32Encode(prefix, bytes) : null;
 }
+
+/**
+ * True only for a canonical validator operator address of the given prefix:
+ * lowercase, 20-byte payload, valid checksum. Re-encoding the decoded bytes and
+ * comparing catches a wrong prefix, a bad checksum and any extra characters
+ * (`/`, `%`, `..`), so the value is safe to put in an upstream LCD path
+ * (QSR-2026-0652).
+ */
+export function isValoper(addr: string, prefix: string): boolean {
+  if (typeof addr !== "string" || addr.length > 90) return false;
+  const bytes = bech32Decode(addr);
+  return !!bytes && bytes.length === 20 && bech32Encode(prefix, bytes) === addr;
+}

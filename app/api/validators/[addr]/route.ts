@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getActiveNetworkId, getNetwork, NETWORK_COOKIE } from "@/lib/registry";
-import { consensusAddress, valoperToAccount } from "@/lib/valcons";
+import { consensusAddress, isValoper, valoperToAccount } from "@/lib/valcons";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +76,11 @@ export async function GET(
   const { addr } = await ctx.params;
   const netId = getActiveNetworkId(req.cookies.get(NETWORK_COOKIE)?.value);
   const net = getNetwork(netId);
+  // The address goes into the LCD path, so only a well-formed operator address
+  // of the active network is accepted (QSR-2026-0652).
+  if (!isValoper(addr, net.data.bech32.validator)) {
+    return NextResponse.json({ error: "invalid validator address" }, { status: 400 });
+  }
 
   let incomplete = false;
   // Every LCD response carries the height it was served at. Reading it from the

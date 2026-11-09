@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  AppWindow,
   ArrowLeftRight,
   Box,
   Coins,
@@ -77,6 +78,12 @@ const SECURITY_SHIELD = {
     title:
       "Not quantum-safe — classical secp256k1 signature over SHAKE-256 (FIPS 202) native sign-bytes",
   },
+  "evm-window": {
+    Icon: Shield,
+    cls: "text-amber-500",
+    title:
+      "Not quantum-safe signature - classical EVM key, used inside a window opened with a post-quantum signature",
+  },
   classical: {
     Icon: ShieldAlert,
     cls: "text-red-500",
@@ -86,7 +93,21 @@ const SECURITY_SHIELD = {
 } as const;
 
 function SecurityShield({ tx }: { tx: TxSummary }) {
-  const { Icon, cls, title } = SECURITY_SHIELD[txSecurityTier(tx)];
+  const tier = txSecurityTier(tx);
+  const { Icon, cls, title } = SECURITY_SHIELD[tier];
+  if (tier === "evm-window") {
+    return (
+      <span
+        role="img"
+        aria-label={title}
+        title={title}
+        className="flex shrink-0 items-center gap-0.5"
+      >
+        <Icon className={`h-4 w-4 ${cls}`} aria-hidden />
+        <AppWindow className="h-4 w-4 text-sky-500" aria-hidden />
+      </span>
+    );
+  }
   return <Icon className={`h-4 w-4 shrink-0 ${cls}`} aria-label={title} />;
 }
 

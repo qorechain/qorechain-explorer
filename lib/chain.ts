@@ -222,8 +222,17 @@ function toTxSummary(r: LcdTxResponse): TxSummary {
  *                 Ethereum path either.  → orange shield
  *  - "classical": EVM-lane (MsgEthereumTx) — keccak256 + secp256k1 end to end,
  *                 no QoreChain quantum layer at all.  → red shield
+ *  - "evm-window": EVM-lane, still classically signed, but the chain admitted it
+ *                 under a window opened with a post-quantum signature (event
+ *                 pqc_evm_window_used, emitted from v3.2.7).  → yellow shield
+ *                 plus a blue window symbol
  */
-export type TxSecurityTier = "pqc" | "enrollment" | "shake" | "classical";
+export type TxSecurityTier =
+  | "pqc"
+  | "enrollment"
+  | "shake"
+  | "evm-window"
+  | "classical";
 
 // Messages that ENROLL or replace a post-quantum key. A first-time registration
 // is necessarily signed classically — there is no PQC key yet to sign with, so
@@ -250,7 +259,10 @@ export function txSecurityTier(tx: TxSummary): TxSecurityTier {
   const isEvm = tx.messagesFull.some((m) =>
     String(m["@type"] ?? "").endsWith("MsgEthereumTx"),
   );
-  return isEvm ? "classical" : "shake";
+  if (!isEvm) return "shake";
+  return tx.events.some((e) => e.type === "pqc_evm_window_used")
+    ? "evm-window"
+    : "classical";
 }
 
 export async function fetchTx(hash: string): Promise<TxSummary> {

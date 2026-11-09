@@ -365,10 +365,16 @@ function QuantumSecurity({ tx }: { tx: TxSummary }) {
   const hybridMode = attr(pqcVerify, "hybrid_mode");
   const keyType = attr(pqcVerify, "key_type");
   const tier = txSecurityTier(tx);
+  // Emitted by the chain from v3.2.7 when an EVM transaction is admitted by the
+  // sender's post-quantum window. The transaction itself stays classically signed.
+  const evmWindow = tx.events.find((e) => e.type === "pqc_evm_window_used");
+  const windowOpenHeight = attr(evmWindow, "window_open_height");
+  const windowUsedTxs = attr(evmWindow, "used_txs");
+  const windowUsedValue = attr(evmWindow, "used_value");
 
   return (
     <div className={`${CARD} p-5`}>
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
         {tier === "pqc" ? (
           <ShieldCheck className="h-4 w-4 text-emerald-500" />
         ) : tier === "enrollment" ? (
@@ -387,9 +393,14 @@ function QuantumSecurity({ tx }: { tx: TxSummary }) {
             post-quantum key enrollment
           </span>
         )}
-        {(tier === "shake" || tier === "classical") && (
+        {(tier === "shake" || tier === "classical" || tier === "evm-window") && (
           <span className="ml-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
             not quantum-safe
+          </span>
+        )}
+        {evmWindow && (
+          <span className="rounded-md bg-sky-500/10 px-2 py-0.5 text-xs font-semibold text-sky-600 dark:text-sky-400">
+            Post-quantum authorized window
           </span>
         )}
         {verified && (
@@ -474,6 +485,39 @@ function QuantumSecurity({ tx }: { tx: TxSummary }) {
             quantum attacks. EVM-lane transactions are standard
             secp256k1/EIP-155 by design.
           </p>
+          {evmWindow && (
+            <>
+              <p className="mb-2 flex items-start gap-2 rounded-lg bg-sky-500/10 p-3 text-xs text-sky-700 dark:text-sky-300">
+                <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
+                Signed with a classical key. Its use was limited in advance by a
+                window opened with a post-quantum signature.
+              </p>
+              {windowOpenHeight && (
+                <FactRow label="Window opened at block">
+                  <Link
+                    href={`/block/${windowOpenHeight}`}
+                    className="font-mono text-sky-600 hover:underline dark:text-sky-400"
+                  >
+                    {Number(windowOpenHeight).toLocaleString("en-US")}
+                  </Link>
+                </FactRow>
+              )}
+              {windowUsedTxs && (
+                <FactRow label="Transaction in window">
+                  <span className="text-slate-700 dark:text-slate-300">
+                    #{windowUsedTxs}
+                  </span>
+                </FactRow>
+              )}
+              {windowUsedValue && (
+                <FactRow label="Window value used so far">
+                  <span className="text-slate-700 dark:text-slate-300">
+                    {formatQor(windowUsedValue, 6)} QOR
+                  </span>
+                </FactRow>
+              )}
+            </>
+          )}
           <FactRow label="Chain hashing">
             <span className="text-slate-700 dark:text-slate-300">
               SHAKE-256 (FIPS 202) at the application layer

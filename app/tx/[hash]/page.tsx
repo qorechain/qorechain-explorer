@@ -23,7 +23,10 @@ import {
   type TxSummary,
 } from "@/lib/chain";
 import { moduleLabel } from "@/lib/modules";
-import { formatQor, timeAgo, truncateMiddle } from "@/lib/format";
+import { aqorToUqor, chargedFeeUqor, formatQor, timeAgo, truncateMiddle } from "@/lib/format";
+
+// x/auth fee_collector module account (lib/modules.ts labels it).
+const FEE_COLLECTOR = "qor17xpfvakm2amg962yls6f84z3kell8c5lyj5r7l";
 import { CARD, CopyValue, ErrorBanner, FactRow, Spinner } from "@/components/ui";
 import { Stepper } from "@/components/Pager";
 
@@ -35,14 +38,15 @@ function coinDisplay(v: unknown): string {
   return list
     .map((c) => {
       if (typeof c === "string") {
-        const m = c.match(/^(\d+)(uqor)$/);
-        return m ? `${formatQor(m[1], 6)} QOR` : c;
+        const m = c.match(/^(\d+)(uqor|aqor)$/);
+        if (!m) return c;
+        return `${formatQor(m[2] === "aqor" ? aqorToUqor(m[1]) : m[1], 6)} QOR`;
       }
       if (c && typeof c === "object" && "denom" in c && "amount" in c) {
         const cc = c as { denom: string; amount: string };
-        return cc.denom === "uqor"
-          ? `${formatQor(cc.amount, 6)} QOR`
-          : `${cc.amount}${cc.denom}`;
+        if (cc.denom === "uqor") return `${formatQor(cc.amount, 6)} QOR`;
+        if (cc.denom === "aqor") return `${formatQor(aqorToUqor(cc.amount), 6)} QOR`;
+        return `${cc.amount}${cc.denom}`;
       }
       return String(c);
     })
@@ -243,10 +247,20 @@ function Overview({ tx }: { tx: TxSummary }) {
         </span>
       </FactRow>
       <FactRow label="Fee">
-        <span className="font-mono text-slate-700 dark:text-slate-300">
-          {coinDisplay(tx.feeAmounts)}{" "}
-          <span className="text-xs text-slate-400">({tx.fee})</span>
-        </span>
+        {(() => {
+          // EVM-lane txs declare the maximum fee (in aqor) and refund unused
+          // gas, so show what the fee collector actually kept.
+          const evm = tx.feeAmounts.some((f) => f.denom === "aqor");
+          const charged = evm ? chargedFeeUqor(tx.events, FEE_COLLECTOR) : null;
+          return (
+            <span className="font-mono text-slate-700 dark:text-slate-300">
+              {charged !== null ? `${formatQor(charged, 6)} QOR` : coinDisplay(tx.feeAmounts)}{" "}
+              <span className="text-xs text-slate-400">
+                {charged !== null ? `(maximum ${coinDisplay(tx.feeAmounts)}, unused gas refunded)` : `(${tx.fee})`}
+              </span>
+            </span>
+          );
+        })()}
       </FactRow>
       <FactRow label="Gas (used / wanted)">
         <span className="font-mono text-slate-700 dark:text-slate-300">

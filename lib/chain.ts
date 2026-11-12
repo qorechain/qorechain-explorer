@@ -32,7 +32,7 @@ export interface TxEvent {
 export interface PqcExtension {
   typeUrl: string;
   algorithmId: number | string;
-  /** base64 length → raw signature size in bytes */
+  /** decoded size of the signature in bytes */
   signatureBytes: number;
 }
 
@@ -161,6 +161,15 @@ interface LcdTxResponse {
 // as PQC would label plain secp256k1 txs "quantum-safe".
 const PQC_HYBRID_SIG_TYPE = "/qorechain.pqc.v1.PQCHybridSignature";
 
+/** Decoded size of a base64 string: 3 bytes per 4 characters, minus the
+ *  "=" padding (an ML-DSA-87 signature is 4,627 bytes, 6,172 characters). */
+export function base64ByteLength(b64: string): number {
+  const s = b64.trim();
+  if (!s) return 0;
+  const padding = s.endsWith("==") ? 2 : s.endsWith("=") ? 1 : 0;
+  return Math.floor((s.length * 3) / 4) - padding;
+}
+
 function toTxSummary(r: LcdTxResponse): TxSummary {
   const feeAmounts = r.tx.auth_info.fee.amount ?? [];
   const extensions = (r.tx.body.extension_options ?? [])
@@ -168,9 +177,7 @@ function toTxSummary(r: LcdTxResponse): TxSummary {
     .map((e) => ({
       typeUrl: e["@type"],
       algorithmId: (e.algorithm_id as number | string) ?? "unknown",
-      signatureBytes: Math.floor(
-        (String(e.pqc_signature ?? "").length * 3) / 4,
-      ),
+      signatureBytes: base64ByteLength(String(e.pqc_signature ?? "")),
     }))
     .filter((e) => e.signatureBytes > 0);
   const events: TxEvent[] = (r.tx_response.events ?? []).map((e) => {

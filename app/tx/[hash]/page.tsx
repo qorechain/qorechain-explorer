@@ -21,6 +21,7 @@ import {
   txSecurityTier,
   type TxEvent,
   type TxSummary,
+  txStatus,
 } from "@/lib/chain";
 import { moduleLabel } from "@/lib/modules";
 import { aqorToUqor, chargedFeeUqor, formatQor, timeAgo, truncateMiddle } from "@/lib/format";
@@ -220,14 +221,22 @@ function Overview({ tx }: { tx: TxSummary }) {
       <FactRow label="Status">
         <span
           className={`rounded-md px-2 py-0.5 text-xs font-semibold ${
-            tx.code === 0
+            txStatus(tx).ok
               ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
               : "bg-red-500/10 text-red-500"
           }`}
         >
-          {tx.code === 0 ? "success" : `failed (code ${tx.code})`}
+          {txStatus(tx).label}
         </span>
       </FactRow>
+      {tx.executionFailure && (
+        <FactRow label="Execution">
+          <span className="text-xs text-red-500">
+            The transaction was included, but the authorised {tx.executionFailure.lane || "account"} execution was refused
+            {tx.executionFailure.reason ? `: ${tx.executionFailure.reason}` : ""}. Nothing moved and the signature&apos;s nonce is used up.
+          </span>
+        </FactRow>
+      )}
       {tx.code !== 0 && tx.rawLog && (
         <FactRow label="Error log">
           <span className="text-xs text-red-500">{tx.rawLog.slice(0, 200)}</span>

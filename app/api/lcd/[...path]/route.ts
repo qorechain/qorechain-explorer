@@ -9,6 +9,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getActiveNetworkId, getNetwork, NETWORK_COOKIE } from "@/lib/registry";
 import { lcdTarget } from "@/lib/lcdTarget";
+import { isTxListPath, slimTxList } from "@/lib/slimTxList";
+
+// The platform refuses responses above ~6 MB with an empty 413. Stay well
+// under it and say why, so the page shows an error instead of an empty list.
+const MAX_RESPONSE_BYTES = 5_000_000;
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +35,9 @@ export async function GET(
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
     });
-    const body = await res.json();
+    const raw = await res.json();
+    // Transaction lists: headers only (see lib/slimTxList.ts).
+    const body = isTxListPath(path) ? slimTxList(raw) : raw;
     // CosmWasm txs embed the full contract bytecode (`wasm_byte_code`) as
     // multi-MB base64 — a single MsgStoreCode tx can be 2–7 MB, and a page of
     // them blows past the platform's response-size cap (→ HTTP 413, empty body,
@@ -39,6 +46,12 @@ export async function GET(
     const cleaned = JSON.stringify(body, (key, value) =>
       key === "wasm_byte_code" && typeof value === "string" ? "" : value,
     );
+    if (cleaned.length > MAX_RESPONSE_BYTES) {
+      return NextResponse.json(
+        { error: "response too large for the explorer; try a smaller page" },
+        { status: 502, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     const out = new NextResponse(cleaned, {
       status: res.status,
       headers: { "content-type": "application/json" },

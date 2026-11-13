@@ -1,4 +1,4 @@
-///// Date : 2026-08-14 | Changes : Explorer home — last 20 blocks + 20 txs (both networks) | Who : Liviu Epure
+///// Date : 2026-11-13 | Changes : Explorer home — batch txs shown as "MsgSend ×N"; a failed tx lookup shows an error, not "no transactions" | Who : Liviu Epure
 "use client";
 
 import { useEffect, useState } from "react";
@@ -25,6 +25,7 @@ import {
   fetchNetworkStats,
   fetchStatus,
   fetchTxs,
+  messageLabel,
   fetchValidators,
   fetchSupply,
   txSecurityTier,
@@ -32,6 +33,7 @@ import {
   type ChainStatus,
   type NetworkStats,
   type TxSummary,
+  txStatus,
 } from "@/lib/chain";
 import { formatQor, timeAgo, truncateMiddle } from "@/lib/format";
 import { useNetwork } from "@/lib/network-provider";
@@ -234,6 +236,7 @@ export default function HomePage() {
   const [status, setStatus] = useState<ChainStatus | null>(null);
   const [blocks, setBlocks] = useState<BlockSummary[] | null>(null);
   const [txs, setTxs] = useState<TxSummary[] | null>(null);
+  const [txsError, setTxsError] = useState<string | null>(null);
   const [validatorCount, setValidatorCount] = useState<number | null>(null);
   const [supply, setSupply] = useState<string | null>(null);
   const [bonded, setBonded] = useState<string | null>(null);
@@ -255,7 +258,17 @@ export default function HomePage() {
       }
       await Promise.all([
         fetchLatestBlocks(20).then((b) => !cancelled && setBlocks(b)).catch(() => undefined),
-        fetchTxs("tx.height>0", 20).then((t) => !cancelled && setTxs(t)).catch(() => !cancelled && setTxs([])),
+        fetchTxs("tx.height>0", 20)
+          .then((t) => {
+            if (cancelled) return;
+            setTxs(t);
+            setTxsError(null);
+          })
+          .catch((e) => {
+            if (cancelled) return;
+            setTxs([]);
+            setTxsError(e instanceof Error ? e.message : String(e));
+          }),
         fetchNetworkStats().then((n) => !cancelled && setStats(n)).catch(() => !cancelled && setStats(null)),
         // Server-computed and cached: ~120 upstream calls, not something to run
         // in every visitor's browser.
@@ -464,9 +477,11 @@ export default function HomePage() {
             <Spinner />
           ) : txs.length === 0 ? (
             <p className="py-6 text-center text-sm text-slate-400">
-              {status && !status.ok
-                ? "Unavailable — the network endpoints are not responding."
-                : "No indexed transactions yet on this network."}
+              {txsError
+                ? `Transactions unavailable: ${txsError}`
+                : status && !status.ok
+                  ? "Unavailable — the network endpoints are not responding."
+                  : "No indexed transactions yet on this network."}
             </p>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-[#1a1f2e]">
@@ -481,18 +496,18 @@ export default function HomePage() {
                   <span className="flex min-w-0 flex-1 items-center gap-2">
                     <MessageTypeIcon type={t.messages[0]?.type ?? ""} />
                     <span className="truncate text-slate-500 dark:text-slate-400">
-                      {t.messages.map((m) => m.type).join(", ") || "—"}
+                      {messageLabel(t)}
                     </span>
                     <SecurityShield tx={t} />
                   </span>
                   <span
                     className={`rounded-md px-1.5 py-0.5 text-xs font-semibold ${
-                      t.code === 0
+                      txStatus(t).ok
                         ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                         : "bg-red-500/10 text-red-500"
                     }`}
                   >
-                    {t.code === 0 ? "success" : `code ${t.code}`}
+                    {txStatus(t).short}
                   </span>
                   <span className="hidden text-xs text-slate-400 sm:inline">
                     {timeAgo(t.time)}

@@ -49,7 +49,15 @@ export interface TxSummary {
   time: string;
   code: number;
   rawLog: string;
+  /** Chain v3.2.8: an authorised authenticator execution (MsgExecuteCosmos /
+   *  MsgExecuteEVM) that failed still has code 0; the chain emits
+   *  abstractaccount_execution_failed with the reason and burns the nonce. */
+  executionFailure: { reason: string; lane: string; account: string } | null;
   messages: Array<{ type: string }>;
+  /** Every message in the tx. Lists receive only the first few messages
+   *  (lib/slimTxList.ts), so counts come from here, not messages.length. */
+  messageCount: number;
+  messageTypes: Array<{ typeUrl: string; type: string; count: number }>;
   /** Full LCD message objects (typed rendering + generic fallback). */
   messagesFull: Array<Record<string, unknown>>;
   gasUsed: string;
@@ -67,8 +75,10 @@ export interface TxSummary {
 
 async function lcd<T>(path: string): Promise<T> {
   const res = await fetch(`/api/lcd/${path}`, { cache: "no-store" });
-  const body = await res.json();
-  if (!res.ok) {
+  // An empty or non-JSON body (e.g. a platform 413) must surface as an error,
+  // never as an empty list.
+  const body = await res.json().catch(() => null);
+  if (!res.ok || body === null) {
     throw new Error(body?.message || body?.error || `LCD HTTP ${res.status}`);
   }
   return body as T;
@@ -125,6 +135,9 @@ interface LcdTxResponse {
   tx: {
     body: {
       messages: Array<Record<string, unknown> & { "@type": string }>;
+      /** Added by the proxy on list responses (lib/slimTxList.ts). */
+      message_count?: number;
+      message_type_counts?: Array<{ type_url: string; count: number }>;
       memo: string;
       timeout_height?: string;
       extension_options?: Array<
@@ -170,6 +183,41 @@ export function base64ByteLength(b64: string): number {
   return Math.floor((s.length * 3) / 4) - padding;
 }
 
+function executionFailureOf(events: TxEvent[]): TxSummary["executionFailure"] {
+  const e = events.find((x) => x.type === "abstractaccount_execution_failed");
+  if (!e) return null;
+  const get = (k: string) => e.attributes.find((a) => a.key === k)?.value ?? "";
+  return { reason: get("reason"), lane: get("lane"), account: get("account") };
+}
+
+/** One status for every view: chain code first, then a refused execution. */
+export function txStatus(tx: Pick<TxSummary, "code" | "executionFailure">): { ok: boolean; label: string; short: string } {
+  if (tx.code !== 0) return { ok: false, label: `failed (code ${tx.code})`, short: `code ${tx.code}` };
+  if (tx.executionFailure) return { ok: false, label: "execution failed", short: "exec failed" };
+  return { ok: true, label: "success", short: "success" };
+}
+
+const shortType = (typeUrl: string) => typeUrl.split(".").pop() ?? typeUrl;
+
+/** "MsgSend ×250" / "MsgSend, MsgDelegate" for list rows. */
+export function messageLabel(tx: Pick<TxSummary, "messageTypes">): string {
+  return (
+    tx.messageTypes
+      .map((m) => (m.count > 1 ? `${m.type} ×${m.count.toLocaleString()}` : m.type))
+      .join(", ") || "—"
+  );
+}
+
+function messageTypesOf(body: LcdTxResponse["tx"]["body"]): TxSummary["messageTypes"] {
+  const fromProxy = body.message_type_counts;
+  if (Array.isArray(fromProxy)) {
+    return fromProxy.map((m) => ({ typeUrl: m.type_url, type: shortType(m.type_url), count: m.count }));
+  }
+  const counts = new Map<string, number>();
+  for (const m of body.messages ?? []) counts.set(m["@type"], (counts.get(m["@type"]) ?? 0) + 1);
+  return [...counts].map(([typeUrl, count]) => ({ typeUrl, type: shortType(typeUrl), count }));
+}
+
 function toTxSummary(r: LcdTxResponse): TxSummary {
   const feeAmounts = r.tx.auth_info.fee.amount ?? [];
   const extensions = (r.tx.body.extension_options ?? [])
@@ -194,9 +242,12 @@ function toTxSummary(r: LcdTxResponse): TxSummary {
     time: r.tx_response.timestamp,
     code: r.tx_response.code,
     rawLog: r.tx_response.raw_log ?? "",
+    executionFailure: executionFailureOf(events),
     messages: (r.tx.body.messages ?? []).map((m) => ({
-      type: m["@type"].split(".").pop() ?? m["@type"],
+      type: shortType(m["@type"]),
     })),
+    messageCount: r.tx.body.message_count ?? (r.tx.body.messages ?? []).length,
+    messageTypes: messageTypesOf(r.tx.body),
     messagesFull: r.tx.body.messages ?? [],
     gasUsed: r.tx_response.gas_used,
     gasWanted: r.tx_response.gas_wanted,
@@ -252,9 +303,7 @@ const PQC_KEY_MGMT_TYPES = [
 ];
 
 export function isPqcKeyManagement(tx: TxSummary): boolean {
-  return tx.messagesFull.some((m) =>
-    PQC_KEY_MGMT_TYPES.includes(String(m["@type"] ?? "")),
-  );
+  return tx.messageTypes.some((m) => PQC_KEY_MGMT_TYPES.includes(m.typeUrl));
 }
 
 export function txSecurityTier(tx: TxSummary): TxSecurityTier {
@@ -263,9 +312,7 @@ export function txSecurityTier(tx: TxSummary): TxSecurityTier {
   // with no PQC extension falls through to "enrollment".
   if (tx.hasPqcExtension) return "pqc";
   if (isPqcKeyManagement(tx)) return "enrollment";
-  const isEvm = tx.messagesFull.some((m) =>
-    String(m["@type"] ?? "").endsWith("MsgEthereumTx"),
-  );
+  const isEvm = tx.messageTypes.some((m) => m.typeUrl.endsWith("MsgEthereumTx"));
   if (!isEvm) return "shake";
   return tx.events.some((e) => e.type === "pqc_evm_window_used")
     ? "evm-window"
@@ -298,6 +345,24 @@ export interface TxPage {
   total: number;
 }
 
+type LcdTxList = {
+  txs: LcdTxResponse["tx"][];
+  tx_responses: LcdTxResponse["tx_response"][];
+  total?: string;
+};
+
+const txListPath = (limit: number, page: number) =>
+  `cosmos/tx/v1beta1/txs?query=${encodeURIComponent("tx.height>0")}` +
+  `&order_by=ORDER_BY_DESC&limit=${limit}&page=${page}`;
+
+/** The node refuses a response above its gRPC message cap (10 MB). Batch
+ *  transactions (hundreds of transfers each) reach it at ~40 per page. */
+const isTooLarge = (e: unknown) =>
+  e instanceof Error && /larger than max|too large/i.test(e.message);
+
+/** Smaller sub-pages that cover exactly the same rows as one big page. */
+export const TX_PAGE_CHUNK = 10;
+
 /**
  * One page of transactions, newest first.
  *
@@ -305,21 +370,35 @@ export interface TxPage {
  * page is fetched server-side: asking for page 7 costs one request for 100 txs,
  * not 700 txs thrown away in the browser. `tx.height>0` is the "everything"
  * query — the tx service requires a query and rejects an empty one.
+ *
+ * When the node refuses the page as too large, the same rows are fetched as
+ * `limit / TX_PAGE_CHUNK` sub-pages of TX_PAGE_CHUNK (page p of size L is
+ * sub-pages (p-1)*L/C + 1 … p*L/C of size C) and joined in order.
  */
 export async function fetchTxPage(page = 1, limit = 100): Promise<TxPage> {
-  const r = await lcd<{
-    txs: LcdTxResponse["tx"][];
-    tx_responses: LcdTxResponse["tx_response"][];
-    total?: string;
-  }>(
-    `cosmos/tx/v1beta1/txs?query=${encodeURIComponent("tx.height>0")}` +
-      `&order_by=ORDER_BY_DESC&limit=${limit}&page=${page}`,
+  let parts: LcdTxList[];
+  try {
+    parts = [await lcd<LcdTxList>(txListPath(limit, page))];
+  } catch (e) {
+    if (!isTooLarge(e) || limit <= TX_PAGE_CHUNK || limit % TX_PAGE_CHUNK !== 0) throw e;
+    const per = limit / TX_PAGE_CHUNK;
+    const first = (page - 1) * per + 1;
+    parts = [];
+    // Five at a time: enough to be quick, few enough not to hammer the node.
+    for (let i = 0; i < per; i += 5) {
+      const batch = await Promise.all(
+        Array.from({ length: Math.min(5, per - i) }, (_, k) =>
+          lcd<LcdTxList>(txListPath(TX_PAGE_CHUNK, first + i + k)),
+        ),
+      );
+      parts.push(...batch);
+      if (batch.some((b) => (b.tx_responses ?? []).length < TX_PAGE_CHUNK)) break;
+    }
+  }
+  const txs = parts.flatMap((r) =>
+    (r.tx_responses ?? []).map((resp, i) => toTxSummary({ tx: r.txs[i], tx_response: resp })),
   );
-  const responses = r.tx_responses ?? [];
-  return {
-    txs: responses.map((resp, i) => toTxSummary({ tx: r.txs[i], tx_response: resp })),
-    total: Number(r.total ?? responses.length),
-  };
+  return { txs, total: Number(parts[0]?.total ?? txs.length) };
 }
 
 /**

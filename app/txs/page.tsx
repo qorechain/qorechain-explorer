@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Zap } from "lucide-react";
 
-import { fetchTxPage, type TxSummary } from "@/lib/chain";
+import { fetchTxPage, messageLabel, txStatus, type TxSummary } from "@/lib/chain";
 import { timeAgo, truncateMiddle } from "@/lib/format";
 import { useNetwork } from "@/lib/network-provider";
 import { CARD, ErrorBanner, Spinner } from "@/components/ui";
@@ -82,7 +82,7 @@ function TxsInner() {
                       </Link>
                     </td>
                     <td className="max-w-[280px] truncate px-5 py-3 text-slate-500 dark:text-slate-400">
-                      {t.messages.map((m) => m.type).join(", ") || "—"}
+                      {messageLabel(t)}
                     </td>
                     <td className="px-5 py-3 text-right">
                       <Link
@@ -95,12 +95,12 @@ function TxsInner() {
                     <td className="px-5 py-3 text-right">
                       <span
                         className={`rounded-md px-1.5 py-0.5 text-xs font-semibold ${
-                          t.code === 0
+                          txStatus(t).ok
                             ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                             : "bg-red-500/10 text-red-500"
                         }`}
                       >
-                        {t.code === 0 ? "success" : `code ${t.code}`}
+                        {txStatus(t).short}
                       </span>
                     </td>
                     <td className="px-5 py-3 text-right font-mono text-xs text-slate-500">

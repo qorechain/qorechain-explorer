@@ -1,4 +1,4 @@
-///// Date : 2026-07-02 | Changes : Address page — unified identity + balances across the 3 VMs | Who : Liviu Epure
+///// Date : 2026-11-13 | Changes : Address page — batch txs shown as "MsgSend ×N"; a failed tx lookup shows an error, not an empty list | Who : Liviu Epure
 "use client";
 
 import { use, useEffect, useState } from "react";
@@ -10,6 +10,7 @@ import {
   fetchAccountInfo,
   fetchBankBalance,
   fetchTxs,
+  messageLabel,
   svmCall,
   type TxSummary,
 } from "@/lib/chain";
@@ -41,10 +42,12 @@ export default function AddressPage({
   const [balances, setBalances] = useState<Balances | null>(null);
   const [account, setAccount] = useState<{ accountNumber: string; sequence: string } | null>(null);
   const [txs, setTxs] = useState<TxSummary[] | null>(null);
+  const [txsError, setTxsError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setError(null);
+    setTxsError(null);
     setBalances(null);
     setTxs(null);
     try {
@@ -67,7 +70,10 @@ export default function AddressPage({
           svmCall<{ value: number | string }>("getBalance", [svmAddressFromBech32(qor)])
             .then((r) => String(r.value))
             .catch(() => null),
-          fetchTxs(`message.sender='${qor}'`, 10).catch(() => []),
+          fetchTxs(`message.sender='${qor}'`, 10).catch((e) => {
+            if (!cancelled) setTxsError(e instanceof Error ? e.message : String(e));
+            return [] as TxSummary[];
+          }),
         ]);
         if (cancelled) return;
         setBalances({ uqor, wei, lamports });
@@ -194,7 +200,9 @@ export default function AddressPage({
             {txs === null ? (
               <Spinner />
             ) : txs.length === 0 ? (
-              <p className="py-4 text-sm text-slate-400">No indexed transactions from this account.</p>
+              <p className="py-4 text-sm text-slate-400">
+                {txsError ? `Transactions unavailable: ${txsError}` : "No indexed transactions from this account."}
+              </p>
             ) : (
               <ul className="divide-y divide-slate-100 dark:divide-[#1a1f2e]">
                 {txs.map((t) => (
@@ -206,7 +214,7 @@ export default function AddressPage({
                       {truncateMiddle(t.hash, 8)}
                     </Link>
                     <span className="truncate text-slate-500 dark:text-slate-400">
-                      {t.messages.map((m) => m.type).join(", ")}
+                      {messageLabel(t)}
                     </span>
                     <span className="text-xs text-slate-400">{timeAgo(t.time)}</span>
                   </li>

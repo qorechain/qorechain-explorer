@@ -381,7 +381,7 @@ export default function HomePage() {
             },
             {
               k: "TPS",
-              v: stats ? stats.tps.toFixed(4) : "—",
+              v: stats && stats.tps !== null ? stats.tps.toFixed(4) : "—",
               k2: "Block time",
               v2: stats && stats.blockSeconds > 0 ? `${stats.blockSeconds.toFixed(3)}s` : "—",
             },

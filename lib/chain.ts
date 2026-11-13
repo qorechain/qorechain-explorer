@@ -483,7 +483,8 @@ export interface NetworkStats {
   epochSecondsRemaining: number;
   blockSeconds: number; // measured, not assumed
   totalTxs: number;
-  tps: number;
+  /** Messages per second; null when the count could not be made (never a fake 0). */
+  tps: number | null;
   bonded: string;
   notBonded: string;
   supply: string;
@@ -507,16 +508,16 @@ export async function fetchNetworkStats(): Promise<NetworkStats> {
   const backCount = 500;
   const back = Math.max(1, height - backCount);
 
-  const [older, txHead, txWindow, pool, supply, vals] = await Promise.all([
+  const [older, txHead, throughput, pool, supply, vals] = await Promise.all([
     fetchBlock(String(back)).catch(() => null),
     lcd<{ total?: string }>(
       `cosmos/tx/v1beta1/txs?query=${encodeURIComponent("tx.height>0")}&order_by=ORDER_BY_DESC&limit=1`,
     ).catch(() => ({ total: "0" })),
-    // Count only, limit=1: the LCD still reports the range total, so this costs
-    // one tx of payload rather than the whole window.
-    lcd<{ total?: string }>(
-      `cosmos/tx/v1beta1/txs?query=${encodeURIComponent(`tx.height>=${back}`)}&order_by=ORDER_BY_DESC&limit=1`,
-    ).catch(() => ({ total: "0" })),
+    // Messages in the window, counted server-side and cached (app/api/throughput).
+    fetch("/api/throughput", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { messages: number; fromHeight: number; toHeight: number } | null) => j)
+      .catch(() => null),
     lcd<{ pool: { bonded_tokens: string; not_bonded_tokens: string } }>(
       "cosmos/staking/v1beta1/pool",
     ),
@@ -556,12 +557,14 @@ export async function fetchNetworkStats(): Promise<NetworkStats> {
     epochSecondsRemaining: blockSeconds > 0 ? (EPOCH_LENGTH - into) * blockSeconds : 0,
     blockSeconds,
     totalTxs: Number(txHead.total ?? 0),
-    // Real throughput over the measured window. On a quiet chain this is a small
-    // fraction; showing the true figure beats showing a flattering one.
+    // MESSAGES (operations) per second over the last 500 blocks, not
+    // transactions: a tx carrying 250 MsgSend counts 250 (owner's decision,
+    // 2026-11-13). Nothing is excluded, batch tests included. On a quiet chain
+    // this is a small fraction; showing the true figure beats a flattering one.
     tps:
-      blockSeconds > 0
-        ? Number(txWindow.total ?? 0) / ((height - back) * blockSeconds)
-        : 0,
+      blockSeconds > 0 && throughput && throughput.toHeight > throughput.fromHeight
+        ? throughput.messages / ((throughput.toHeight - throughput.fromHeight) * blockSeconds)
+        : null,
     bonded: pool.pool.bonded_tokens,
     notBonded: pool.pool.not_bonded_tokens,
     supply: supply.amount.amount,
